@@ -1,0 +1,75 @@
+# Local development stack: TeaHub + PostgreSQL.
+#
+#   docker compose up --build         # start db + app
+#   docker compose run --rm migrate   # run migrations only (app also does this at startup)
+#   docker compose --profile test up db-test   # a throwaway DB for `go test` integration tests
+#
+# The app container needs GITHUB_CLIENT_ID/SECRET and ANTHROPIC_API_KEY to
+# be fully functional; it still starts without them (see README "Running
+# without full configuration"), just with sign-in/AI features disabled.
+# Put real values in a .env file (see .env.example) — compose reads .env
+# from the project root automatically.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: teahub
+      POSTGRES_PASSWORD: teahub
+      POSTGRES_DB: teahub
+    ports:
+      - "5432:5432"
+    volumes:
+      - teahub-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teahub -d teahub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TEAHUB_VERSION: local-compose
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      TEAHUB_ENV: development
+      DATABASE_URL: postgres://teahub:teahub@db:5432/teahub?sslmode=disable
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-local-dev-signing-key-please-change-32bytes}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_OAUTH_REDIRECT_URL: ${GITHUB_OAUTH_REDIRECT_URL:-http://localhost:8080/auth/github/callback}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      REPO_STORAGE_DIR: /data/repos
+    volumes:
+      - teahub-repo-data:/data
+
+  # A separate, disposable Postgres instance for running dbstore's
+  # integration tests (`go test ./backend/internal/dbstore/... `) against a
+  # real database without touching the dev DB above. Only starts with
+  # `--profile test`.
+  db-test:
+    image: postgres:16-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: teahub_test
+      POSTGRES_PASSWORD: teahub_test
+      POSTGRES_DB: teahub_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data # throwaway: no persistence needed for tests
+
+volumes:
+  teahub-db-data:
+  teahub-repo-data:

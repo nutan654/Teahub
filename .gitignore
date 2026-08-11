@@ -1,0 +1,24 @@
+# Go
+teahub-server
+teahub-server.exe
+/bin/
+*.test
+*.out
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data (cloned repos, indexes) — never committed, see REPO_STORAGE_DIR
+data/
+tmp/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log

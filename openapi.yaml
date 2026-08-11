@@ -1,0 +1,532 @@
+openapi: 3.0.3
+info:
+  title: TeaHub API
+  description: >-
+    Generated from API.md and cross-checked directly against the handler
+    implementations in backend/internal/api. Where the two disagreed
+    (e.g. rate-limit responses, which API.md didn't document), this spec
+    follows the code. Every non-2xx response uses the shared
+    {"error": "..."} shape defined in the ErrorResponse schema, unless
+    noted otherwise.
+  version: "1.0.0"
+servers:
+  - url: /
+    description: Same origin as the frontend by default (e.g. http://localhost:8080)
+
+tags:
+  - name: Authentication
+  - name: Health
+  - name: Repositories
+
+paths:
+  /auth/github/login:
+    get:
+      tags: [Authentication]
+      summary: Start GitHub OAuth login
+      description: >-
+        Redirects the browser to GitHub's OAuth authorize page and sets a
+        short-lived CSRF-state cookie. No auth required.
+      responses:
+        "302":
+          description: Redirect to GitHub's OAuth authorize page.
+
+  /auth/github/callback:
+    get:
+      tags: [Authentication]
+      summary: GitHub OAuth callback
+      description: >-
+        GitHub redirects here after the user approves. On success, sets
+        the session cookie and redirects to FRONTEND_ORIGIN (or /). No
+        auth required (this endpoint establishes it).
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "302":
+          description: Success — session cookie set, redirect to the frontend.
+        "400":
+          description: Invalid or missing code/state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "502":
+          description: GitHub token exchange or user-info fetch failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Sign out
+      description: Revokes the current session server-side and clears the cookie.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Signed out.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "signed out" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/me:
+    get:
+      tags: [Authentication]
+      summary: Current user
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The signed-in user's identity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: Never touches the database. No auth required.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+                  version: { type: string, example: "dev" }
+
+  /api/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: Pings the database. No auth required.
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ready" }
+        "503":
+          description: Database unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "not ready" }
+                  error: { type: string, example: "database unreachable" }
+
+  /metrics:
+    get:
+      tags: [Health]
+      summary: In-memory request/latency metrics
+      description: >-
+        No auth required — exposes only aggregate counts/latency, no
+        per-user or per-repo data. Latency percentiles are computed over
+        the most recent 2000 requests (a bounded window, not full
+        process lifetime).
+      responses:
+        "200":
+          description: Metrics snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricsSnapshot" }
+
+  /api/import:
+    post:
+      tags: [Repositories]
+      summary: Import a repository
+      description: >-
+        Clones, parses, and indexes a public GitHub repository, scoped
+        to the calling user. Synchronous — the request blocks until
+        cloning and indexing finish (see ARCHITECTURE.md "Synchronous
+        import"). Subject to per-user rate limiting
+        (IMPORT_RATE_LIMIT_PER_MIN / IMPORT_RATE_LIMIT_BURST).
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  description: "owner/repo shorthand, or a full https://github.com/owner/repo URL."
+                  example: "octocat/Hello-World"
+      responses:
+        "200":
+          description: The created repository.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: This exact URL was already imported by this user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: Clone failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/repos:
+    get:
+      tags: [Repositories]
+      summary: List my repositories
+      description: >-
+        Lists repositories owned by the calling user only, most recently
+        imported first, keyset-paginated.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+          description: Defaults to 20; values above 100 are clamped to 100.
+        - name: cursor
+          in: query
+          schema: { type: string }
+          description: Opaque. Omit for the first page; pass back the previous response's nextCursor for the next page.
+      responses:
+        "200":
+          description: A page of repositories.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repos:
+                    type: array
+                    items: { $ref: "#/components/schemas/Repository" }
+                  nextCursor:
+                    type: string
+                    description: Empty string once there are no more pages.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/repos/{id}:
+    delete:
+      tags: [Repositories]
+      summary: Delete a repository
+      description: Requires ownership. Deletes the repository's metadata and its on-disk clone.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RepoId"
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "deleted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/repos/{id}/file:
+    get:
+      tags: [Repositories]
+      summary: Read a file from an imported repository
+      description: >-
+        Requires ownership and that the repo status is "ready". Path
+        traversal outside the repo root is rejected.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RepoId"
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+          description: File path relative to the repository root.
+      responses:
+        "200":
+          description: File content.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileContent" }
+        "400":
+          description: Missing path, path escapes the repo, or path is a directory.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Repository exists but is still importing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/repos/{id}/diagram:
+    post:
+      tags: [Repositories]
+      summary: Generate or fetch a cached architecture diagram
+      description: Requires ownership. Omit ?refresh=true to get the cached version if one exists.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RepoId"
+        - name: refresh
+          in: query
+          schema: { type: boolean, default: false }
+          description: Set to true to force regeneration (costs a real AI API call) even if a cached diagram exists.
+      responses:
+        "200":
+          description: Diagram.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mermaid: { type: string }
+                  explanation: { type: string }
+                  cached: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Repository exists but is still importing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "502":
+          description: Upstream AI call failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/repos/{id}/search:
+    post:
+      tags: [Repositories]
+      summary: Hybrid semantic code search
+      description: >-
+        Requires ownership. Subject to per-user rate limiting (shares
+        the ASK_RATE_LIMIT_* limiter with /api/ask).
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RepoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  example: "where do we validate incoming webhooks"
+      responses:
+        "200":
+          description: Search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        reason: { type: string }
+        "400":
+          description: Empty query, or query exceeds MAX_SEARCH_QUERY_LENGTH.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Repository exists but is still importing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: Upstream AI call failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/ask:
+    post:
+      tags: [Repositories]
+      summary: Grounded Q&A over an imported repository
+      description: >-
+        Requires ownership. Subject to per-user rate limiting
+        (ASK_RATE_LIMIT_PER_MIN / ASK_RATE_LIMIT_BURST).
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repoId, question]
+              properties:
+                repoId: { type: string, format: uuid }
+                question: { type: string, example: "where is auth handled?" }
+      responses:
+        "200":
+          description: Answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer: { type: string }
+                  sourceFiles:
+                    type: array
+                    items: { type: string }
+        "400":
+          description: Empty question, or question exceeds MAX_QUESTION_LENGTH.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Repository exists but is still importing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: "Upstream AI call failed (e.g. ANTHROPIC_API_KEY unset)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION_COOKIE_NAME
+      description: >-
+        Set by /auth/github/callback on successful login. The cookie's
+        actual name is configurable via SESSION_COOKIE_NAME; the default
+        used by docker-compose/.env.example is shown for illustration
+        only — check backend/internal/config for the deployed value.
+
+  parameters:
+    RepoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Missing or invalid session cookie.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: >-
+        Unknown repo id, or it belongs to a different user. Ownership
+        and not-found failures are deliberately both 404 (never 403) so
+        a caller can't distinguish "doesn't exist" from "isn't yours" —
+        see ARCHITECTURE.md "Ownership enforcement".
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TooManyRequests:
+      description: >-
+        Per-user rate limit exceeded for this endpoint. Not documented
+        in the original API.md; confirmed against httpmw.rateLimited in
+        backend/internal/api/server.go.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        githubLogin: { type: string }
+      required: [id, githubLogin]
+
+    FileNode:
+      type: object
+      properties:
+        path: { type: string, description: "Relative to the repo root, e.g. src/auth/jwt.go" }
+        isDir: { type: boolean }
+        size: { type: integer, format: int64 }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/FileNode" }
+      required: [path, isDir]
+
+    Repository:
+      type: object
+      description: >-
+        Fields marked "list view only" are populated on GET /api/repos
+        and the POST /api/import response; ownerId and the on-disk clone
+        path are never exposed to clients (json:"-" in the Go struct).
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        status:
+          type: string
+          enum: [cloning, indexing, ready, failed]
+        importedAt: { type: string, format: date-time }
+        fileCount: { type: integer }
+        tree: { $ref: "#/components/schemas/FileNode" }
+      required: [id, url, status, importedAt, fileCount]
+
+    FileContent:
+      type: object
+      properties:
+        path: { type: string }
+        language: { type: string, example: "go" }
+        content: { type: string }
+        size: { type: integer, format: int64 }
+        truncated: { type: boolean }
+      required: [path, language, content, size, truncated]
+
+    MetricsSnapshot:
+      type: object
+      properties:
+        totalRequests: { type: integer }
+        errors5xx: { type: integer }
+        requestsByStatusClass:
+          type: object
+          additionalProperties: { type: integer }
+          example: { "2xx": 1180, "4xx": 21, "5xx": 3 }
+        latencyP50Ms: { type: number }
+        latencyP99Ms: { type: number }
+        latencySampleCount: { type: integer }
