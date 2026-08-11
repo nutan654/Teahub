@@ -21,6 +21,61 @@ that first-hour ramp-up into a few minutes by combining real static
 analysis with an LLM that's grounded in the actual repository content
 (never just its own training data) and always cites its sources.
 
+### Who it's for / when it's useful
+
+- **Onboarding onto a codebase you didn't write** — new hire, new
+  open-source contributor, or picking up a project you haven't touched in
+  months. Import it, ask "what does this repo do?" or "where is
+  authentication handled?" and get an answer grounded in the actual files,
+  not a guess.
+- **Evaluating a repo before you depend on it** — before adding a library
+  or forking a project, generate its architecture diagram and skim the
+  auto-extracted symbol index (functions, types, TODOs) instead of reading
+  every file.
+- **Code review / due diligence** — semantic search finds the function
+  that *does* what you're describing even when it doesn't share any words
+  with your query (e.g. "where do we prevent replay attacks" matching a
+  nonce-check that never says "replay").
+- **Teaching or interviewing** — point it at a reference implementation
+  and let someone explore it with plain-English questions instead of a
+  guided walkthrough.
+
+Every repo you import is private to your account (GitHub-authenticated,
+ownership-checked on every request — see "Security considerations" below),
+so this is safe to use on private forks or work-in-progress branches, not
+just public showcase repos.
+
+### How to use it
+
+1. **Sign in** — click "Sign in with GitHub" (top right). This is the
+   only way in; there's no separate username/password system.
+2. **Import a repository** — paste a public GitHub URL or `owner/repo`
+   shorthand (e.g. `golang/example`) into the import box and submit. The
+   backend clones it, walks the file tree, and runs per-language static
+   analysis inline — for a small-to-medium repo this takes a few seconds
+   to low tens of seconds; you'll see the imported repo appear in your
+   list when it's done.
+3. **Explore** — open the repo from your list and use the tabs:
+   - **Explorer** — browse the file tree, click any file to read it with
+     syntax highlighting.
+   - **Chat / Ask** — ask a question in plain English ("what does this
+     repo do?", "where is the rate limiter implemented?"). The answer
+     cites the specific files it's grounded in, so you can verify it
+     rather than trust it blindly.
+   - **Search** — a query like "handles user sign-out" returns ranked
+     files by actual relevance, not just keyword match.
+   - **Architecture** — generates a Mermaid diagram of the repo's
+     structure (detected stack, top-level layout, likely entrypoints)
+     with a short written explanation alongside it.
+4. **Delete a repo** whenever you're done with it — this removes its
+   metadata and frees its cached index; nothing about your account is
+   affected.
+
+Everything above is also reachable directly via the HTTP API (see
+`API.md` / `openapi.yaml`) if you'd rather script it than click through
+the UI — e.g. `POST /api/import`, `POST /api/ask`, `POST
+/api/repos/{id}/search`, `POST /api/repos/{id}/diagram`.
+
 ## 2. Architecture diagram
 
 ```
