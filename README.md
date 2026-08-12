@@ -289,7 +289,35 @@ production (`config.Load` allows it everywhere except when you also set
 `TEAHUB_ENV=production`, at which point it's simply ignored in favor of
 requiring a real `DATABASE_URL`).
 
-## 9. Live deployment
+## 9. Demo Mode (try it with zero setup)
+
+Set `DEMO_REPO_URL` (e.g. `DEMO_REPO_URL=golang/example`) and TeaHub
+clones + indexes that one repository **once, at server startup**, then
+serves it through a handful of unauthenticated, read-only endpoints
+(`GET /api/demo`, `GET /api/demo/file`, `POST /api/demo/ask`,
+`/api/demo/search`, `/api/demo/diagram`) — no GitHub OAuth, no account,
+no Postgres row, nothing to configure on the visitor's side. The landing
+page's "Try live demo" button drives the exact same Explorer/Chat/Search/
+Architecture UI as a real import, just pointed at these endpoints.
+
+This exists specifically so anyone evaluating the project — a recruiter
+following a resume link, a reviewer, anyone without their own Anthropic
+key — can experience the real product in under a minute. A few
+deliberate constraints keep it safe and cheap to leave running publicly:
+
+- **Anonymous Ask/Search calls are rate-limited by caller IP**
+  (`DEMO_ASK_RATE_LIMIT_PER_MIN` / `_BURST`, tighter than the
+  authenticated defaults), so a publicly linked page can't run up your
+  Anthropic bill.
+- **The architecture diagram is generated once, total** — the first
+  visitor to load it pays one AI call; every visitor after that gets the
+  cached result. There's no `?refresh=true` for demo visitors.
+- **Leaving `DEMO_REPO_URL` unset disables Demo Mode completely** — zero
+  extra routes, zero extra clone/API cost. It's opt-in.
+
+See `backend/internal/api/demo.go` for the full design note.
+
+## 10. Live deployment
 
 **Not currently deployed anywhere** — no GCP project or credentials were
 available while building this. `deploy/cloudrun.md` documents the exact
@@ -297,7 +325,7 @@ available while building this. `deploy/cloudrun.md` documents the exact
 written and reviewed but not executed. Follow it end-to-end to get a real
 URL, then update this section with the live link.
 
-## 10. Screenshots / demo instructions
+## 11. Screenshots / demo instructions
 
 No screenshots are checked into this repo (avoid committing binary image
 diffs that go stale). To capture your own after running the app locally
@@ -332,7 +360,7 @@ teahub/
 │       ├── diagram/              structural summary + Mermaid diagram generation/validation
 │       ├── semsearch/            hybrid keyword-prefilter + LLM semantic re-ranking, with path validation
 │       ├── store/                in-process runtime cache (file bodies + analysis index), not persisted
-│       └── api/                  HTTP handlers, routing, auth/ownership enforcement
+│       └── api/                  HTTP handlers, routing, auth/ownership enforcement (incl. demo.go — unauthenticated Demo Mode)
 ├── frontend/index.html        single-file UI, no build step (hljs + mermaid.js via CDN)
 ├── deploy/cloudrun.md          Cloud Run + Cloud SQL + Secret Manager deployment guide
 ├── .github/workflows/ci.yml    CI: fmt, vet, build, test, test -race, Docker build

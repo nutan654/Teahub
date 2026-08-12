@@ -99,6 +99,33 @@ type Config struct {
 	ImportRateLimitBurst  int
 	AskRateLimitPerMin    float64
 	AskRateLimitBurst     int
+
+	// --- Recruiter/public Demo Mode ---------------------------------
+	//
+	// DemoRepoURL, if set, turns on a small set of unauthenticated,
+	// read-only endpoints (GET /api/demo, /api/demo/file, and POST
+	// /api/demo/ask, /demo/search, /demo/diagram) backed by exactly one
+	// repository — cloned and indexed once at startup, never re-cloned
+	// per visitor. This exists so a recruiter/reviewer can experience
+	// TeaHub's real features (explorer, Q&A, semantic search, diagram
+	// generation) from a shared link with zero setup: no GitHub OAuth,
+	// no account. See backend/internal/api/demo.go for the full design
+	// note, including why it's rate-limited by IP rather than by user.
+	//
+	// Empty (the default) disables Demo Mode entirely — no extra routes
+	// are registered and no extra clone/API cost is incurred.
+	DemoRepoURL string
+
+	// DemoAskRateLimitPerMin / DemoAskRateLimitBurst bound the two
+	// AI-cost-bearing demo endpoints (/api/demo/ask and
+	// /api/demo/search, which share this limiter for the same reason
+	// the authenticated ask/search endpoints do), keyed by caller IP
+	// instead of user ID since demo visitors aren't authenticated.
+	// Deliberately tighter than the authenticated defaults — this
+	// protects the Anthropic API budget from being spent by anonymous
+	// traffic on a publicly linked demo, not just from abuse.
+	DemoAskRateLimitPerMin float64
+	DemoAskRateLimitBurst  int
 }
 
 func getenv(key, def string) string {
@@ -191,6 +218,10 @@ func Load() (*Config, error) {
 		ImportRateLimitBurst:  getenvInt("IMPORT_RATE_LIMIT_BURST", 3),
 		AskRateLimitPerMin:    getenvFloat("ASK_RATE_LIMIT_PER_MIN", 20),
 		AskRateLimitBurst:     getenvInt("ASK_RATE_LIMIT_BURST", 10),
+
+		DemoRepoURL:            os.Getenv("DEMO_REPO_URL"),
+		DemoAskRateLimitPerMin: getenvFloat("DEMO_ASK_RATE_LIMIT_PER_MIN", 6),
+		DemoAskRateLimitBurst:  getenvInt("DEMO_ASK_RATE_LIMIT_BURST", 3),
 	}
 
 	if key := os.Getenv("JWT_SIGNING_KEY"); key != "" {

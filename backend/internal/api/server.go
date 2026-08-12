@@ -64,6 +64,12 @@ type Server struct {
 	// served at GET /metrics. See internal/metrics's package doc for why
 	// this is a small in-memory counter rather than a full metrics client.
 	metrics *metrics.Collector
+
+	// demoLimiter rate-limits the two AI-cost-bearing Demo Mode endpoints
+	// (/api/demo/ask, /api/demo/search) by caller IP rather than user ID,
+	// since demo visitors are never authenticated. Only ever consulted
+	// when cfg.DemoRepoURL is set — see demo.go for the full design note.
+	demoLimiter *httpmw.UserRateLimiter
 }
 
 // New wires a Server. aiClient lets tests inject a Client pointed at a
@@ -78,10 +84,12 @@ func New(cfg *config.Config, data DataStore, cache *store.Store, logger *slog.Lo
 		states:        make(map[string]time.Time),
 		importLimiter: httpmw.NewUserRateLimiter(cfg.ImportRateLimitPerMin/60, cfg.ImportRateLimitBurst),
 		askLimiter:    httpmw.NewUserRateLimiter(cfg.AskRateLimitPerMin/60, cfg.AskRateLimitBurst),
+		demoLimiter:   httpmw.NewUserRateLimiter(cfg.DemoAskRateLimitPerMin/60, cfg.DemoAskRateLimitBurst),
 		metrics:       metrics.New(),
 	}
 	srv.importLimiter.StartCleanup(10*time.Minute, time.Hour)
 	srv.askLimiter.StartCleanup(10*time.Minute, time.Hour)
+	srv.demoLimiter.StartCleanup(10*time.Minute, time.Hour)
 	if cfg.GitHubClientID != "" {
 		srv.oauth = auth.NewGitHubOAuth(cfg.GitHubClientID, cfg.GitHubClientSecret, cfg.GitHubRedirectURL)
 	}
@@ -167,6 +175,19 @@ func (s *Server) routes() {
 	// (see semsearch.Search), even though the original gap list only
 	// called out import/ask explicitly.
 	s.mux.Handle("POST /api/repos/{id}/search", s.requireAuth(s.rateLimited(s.askLimiter, s.handleSearch)))
+
+	// Demo Mode: unauthenticated, read-only endpoints backed by one
+	// pre-indexed repository, so a recruiter/reviewer can use every real
+	// feature from a shared link with zero setup. Only registered when
+	// DEMO_REPO_URL is configured — an unconfigured deployment has zero
+	// extra route surface. See demo.go for the full design note.
+	if s.cfg.DemoRepoURL != "" {
+		s.mux.HandleFunc("GET /api/demo", s.handleDemoInfo)
+		s.mux.HandleFunc("GET /api/demo/file", s.handleDemoFile)
+		s.mux.HandleFunc("POST /api/demo/ask", s.demoRateLimited(s.handleDemoAsk))
+		s.mux.HandleFunc("POST /api/demo/search", s.demoRateLimited(s.handleDemoSearch))
+		s.mux.HandleFunc("POST /api/demo/diagram", s.handleDemoDiagram)
+	}
 
 	s.mux.Handle("/", http.FileServer(http.Dir("./frontend")))
 }
