@@ -1,0 +1,76 @@
+# Render Blueprint for TeaHub.
+#
+# https://render.com/docs/blueprint-spec
+#
+# Deploys the existing multi-stage Dockerfile as-is (no changes needed to
+# it) as a Render Web Service, backed by a Render-managed Postgres
+# database, wired together automatically via `fromDatabase`.
+#
+# Usage: push this file to the repo root, then in the Render Dashboard
+# choose "New +" -> "Blueprint" and point it at this repo. Render reads
+# this file and provisions everything below in one go. See
+# deploy/render.md for the full walkthrough, including the handful of
+# secrets (GitHub OAuth, Anthropic API key) you still have to paste in by
+# hand — Blueprints deliberately never let you commit secrets to the repo
+# (see the `sync: false` vars below).
+services:
+  - type: web
+    name: teahub
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: TEAHUB_ENV
+        value: production
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: PORT
+        value: "8080"
+      - key: REPO_STORAGE_DIR
+        value: /data/repos
+      - key: DATABASE_URL
+        fromDatabase:
+          name: teahub-db
+          property: connectionString
+      # HS256 session-signing key — Render generates a random 256-bit
+      # value on first sync and never displays it back in this file.
+      - key: JWT_SIGNING_KEY
+        generateValue: true
+      # Everything below is a secret or deployment-specific value with no
+      # safe default; `sync: false` makes Render prompt for it once in
+      # the Dashboard during Blueprint creation (and on manual edits
+      # after), rather than ever living in this committed file.
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_REDIRECT_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
+      # Optional: set in the Dashboard to turn on the unauthenticated
+      # /api/demo/* endpoints (see backend/internal/api/demo.go). Leave
+      # unset (the default) to keep Demo Mode fully disabled.
+      - key: DEMO_REPO_URL
+        sync: false
+    # Cloned repo working trees (see ARCHITECTURE.md "Storage model").
+    # Optional: the app already tolerates re-cloning on a cache miss
+    # (Render's default disk is ephemeral across deploys just like Cloud
+    # Run's), so remove this whole `disk:` block if you'd rather not pay
+    # for a persistent disk on the Starter/free tiers where it may not be
+    # available. Repository *metadata* always lives in Postgres either
+    # way, never on this disk.
+    disk:
+      name: teahub-repos
+      mountPath: /data
+      sizeGB: 1
+
+databases:
+  - name: teahub-db
+    plan: free
+    databaseName: teahub
+    user: teahub

@@ -8,6 +8,11 @@ tree, ask plain-English questions, search by meaning, and generate an
 architecture diagram. Every answer cites the exact files it's grounded
 in, so you can verify it instead of trusting it blindly.
 
+Built incrementally: each stage shipped fully working and tested before the
+next started (see `ROADMAP.md`). It's a real Go backend + Postgres +
+GitHub OAuth, containerized and documented for both Render and Cloud Run
+deployment — not a mockup, and not a toy in-memory demo.
+
 **[▶ Try the live demo — no sign-in required](#try-it-now-zero-setup)**
 &nbsp;·&nbsp; [API reference](API.md) &nbsp;·&nbsp; [Architecture deep-dive](ARCHITECTURE.md)
 
@@ -147,7 +152,27 @@ Cloned working trees live on disk (`REPO_STORAGE_DIR`) — source code is
 **never** written to Postgres. Full storage-model reasoning, including
 the Cloud Run ephemeral-disk case: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+<<<<<<< HEAD
 ---
+=======
+- **Backend**: Go 1.22, stdlib `net/http` (Go 1.22+ `ServeMux` path
+  variables, no web framework), `database/sql` + `lib/pq`.
+- **Database**: PostgreSQL 16 — users, repository metadata, sessions.
+  Embedded, versioned SQL migrations (no external migration tool).
+- **Auth**: GitHub OAuth (authorization-code flow, implemented directly
+  against `net/http` — no `golang.org/x/oauth2` dependency) + hand-rolled
+  HS256 JWT session tokens (no JWT library dependency) in an HttpOnly,
+  SameSite=Lax cookie. Revocable via a `sessions` table.
+- **AI**: Anthropic Claude API (Messages endpoint), one shared client for
+  every AI-backed feature (Q&A, diagram generation, semantic search).
+- **Frontend**: a single static HTML file, zero build step, `highlight.js`
+  + `mermaid.js` via CDN.
+- **Infra**: Docker (multi-stage build), docker-compose (local dev),
+  GitHub Actions CI. Deployment targets: Render (Docker web service +
+  managed Postgres, one-click via `render.yaml` — see `deploy/render.md`)
+  and Google Cloud Run + Cloud SQL + Secret Manager (see
+  `deploy/cloudrun.md`).
+>>>>>>> 6dc9fe3 (Update project files and configurations)
 
 ## Tech stack
 
@@ -293,7 +318,55 @@ For zero-Postgres local hacking, see `TEAHUB_IN_MEMORY_STORE` in
 env var to keep the zero-setup demo live at the same URL. Not
 deployed anywhere yet — that's next.
 
+<<<<<<< HEAD
 ---
+=======
+This exists specifically so anyone evaluating the project — a recruiter
+following a resume link, a reviewer, anyone without their own Anthropic
+key — can experience the real product in under a minute. A few
+deliberate constraints keep it safe and cheap to leave running publicly:
+
+- **Anonymous Ask/Search calls are rate-limited by caller IP**
+  (`DEMO_ASK_RATE_LIMIT_PER_MIN` / `_BURST`, tighter than the
+  authenticated defaults), so a publicly linked page can't run up your
+  Anthropic bill.
+- **The architecture diagram is generated once, total** — the first
+  visitor to load it pays one AI call; every visitor after that gets the
+  cached result. There's no `?refresh=true` for demo visitors.
+- **Leaving `DEMO_REPO_URL` unset disables Demo Mode completely** — zero
+  extra routes, zero extra clone/API cost. It's opt-in.
+
+See `backend/internal/api/demo.go` for the full design note.
+
+## 10. Live deployment
+
+**Not currently deployed anywhere** — deploy from here using either path:
+`render.yaml` at the repo root is a Render Blueprint that provisions a
+Docker web service plus a managed Postgres database in one step (see
+`deploy/render.md` for the full walkthrough, Blueprint and
+manual-dashboard versions alike), or `deploy/cloudrun.md` documents the
+equivalent `gcloud` commands for Cloud Run + Cloud SQL + Secret Manager.
+Both are written and reviewed but not executed from this repo. Follow
+either end-to-end to get a real URL, then update this section with the
+live link. (If you're keeping the existing Vercel deployment of
+`frontend/index.html` rather than letting Render serve it directly, see
+the "Notes for a Vercel-hosted frontend" section in `deploy/render.md`
+for wiring `FRONTEND_ORIGIN` and the OAuth callback URL between the two.)
+
+## 11. Screenshots / demo instructions
+
+No screenshots are checked into this repo (avoid committing binary image
+diffs that go stale). To capture your own after running the app locally
+(see section 8):
+
+1. Sign in with GitHub, import a well-known repo, e.g. `golang/example`.
+2. Screenshot the file tree + explorer view (click any file).
+3. Ask a question in the Chat tab, e.g. "what does this repo do?" —
+   screenshot the answer with its cited source files.
+4. Run a Search tab query and screenshot the ranked results.
+5. Generate an architecture diagram (Architecture tab) and screenshot the
+   rendered Mermaid diagram + explanation.
+>>>>>>> 6dc9fe3 (Update project files and configurations)
 
 ## Project layout
 
@@ -318,8 +391,14 @@ teahub/
 │       ├── store/                in-process runtime cache, not persisted
 │       └── api/                  HTTP handlers, routing (incl. demo.go — unauthenticated Demo Mode)
 ├── frontend/index.html        single-file UI, no build step (hljs + mermaid.js via CDN)
+├── deploy/render.md            Render (Docker web service + managed Postgres) deployment guide
 ├── deploy/cloudrun.md          Cloud Run + Cloud SQL + Secret Manager deployment guide
+<<<<<<< HEAD
 ├── .github/workflows/ci.yml    CI: fmt, vet, build, test, race, Docker build
+=======
+├── render.yaml                  Render Blueprint (one-step web service + Postgres provisioning)
+├── .github/workflows/ci.yml    CI: fmt, vet, build, test, test -race, Docker build
+>>>>>>> 6dc9fe3 (Update project files and configurations)
 ├── Dockerfile                  multi-stage, non-root runtime
 ├── docker-compose.yml           local TeaHub + Postgres
 ├── API.md · openapi.yaml        hand-written + generated API reference
