@@ -1,0 +1,30 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Frontend build
+.next/
+out/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Go
+bin/
+
+# Deployment
+.vercel/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
