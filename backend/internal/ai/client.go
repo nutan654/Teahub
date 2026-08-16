@@ -148,10 +148,10 @@ func (c *Client) Complete(ctx context.Context, system, user string, opts ...Comp
 	}
 	if len(parsed.Choices) == 0 {
     return "", fmt.Errorf("empty response from model (status %d): %s", resp.StatusCode, string(body))
- }
-  if parsed.Choices[0].Message.Content == "" {
+    }
+    if parsed.Choices[0].Message.Content == "" {
     return "", fmt.Errorf("empty message content from model (status %d): %s", resp.StatusCode, string(body))
-}
+    }
 
 	return parsed.Choices[0].Message.Content, nil
 }
