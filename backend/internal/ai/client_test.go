@@ -11,23 +11,23 @@ import (
 
 func TestComplete_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("x-api-key") != "test-key" {
-			t.Errorf("missing/wrong x-api-key header: %q", r.Header.Get("x-api-key"))
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("missing/wrong Authorization header: %q", r.Header.Get("Authorization"))
 		}
 		var req apiRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decoding request: %v", err)
 		}
-		if req.Model == "" || len(req.Messages) != 1 {
+		if req.Model == "" || len(req.Messages) != 2 {
 			t.Errorf("unexpected request shape: %+v", req)
 		}
 		json.NewEncoder(w).Encode(apiResponse{
-			Content: []contentBlock{{Type: "text", Text: "42"}},
+			Choices: []choice{{Message: message{Role: "assistant", Content: "42"}}},
 		})
 	}))
 	defer srv.Close()
 
-	c := &Client{APIKey: "test-key", Model: "claude-sonnet-5", BaseURL: srv.URL, HTTPClient: srv.Client()}
+	c := &Client{APIKey: "test-key", Model: "gemini-2.0-flash", BaseURL: srv.URL, HTTPClient: srv.Client()}
 	got, err := c.Complete(context.Background(), "system", "what is the answer?")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -41,7 +41,7 @@ func TestComplete_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]any{
-			"error": map[string]string{"type": "authentication_error", "message": "invalid x-api-key"},
+			"error": map[string]string{"type": "authentication_error", "message": "invalid API key"},
 		})
 	}))
 	defer srv.Close()
@@ -59,7 +59,7 @@ func TestComplete_APIError(t *testing.T) {
 func TestComplete_NoAPIKey(t *testing.T) {
 	c := &Client{APIKey: ""}
 	_, err := c.Complete(context.Background(), "sys", "hello")
-	if err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
+	if err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
 		t.Errorf("expected missing-key error, got: %v", err)
 	}
 }
@@ -70,7 +70,9 @@ func TestComplete_MaxTokensOverride(t *testing.T) {
 		var req apiRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		gotMaxTokens = req.MaxTokens
-		json.NewEncoder(w).Encode(apiResponse{Content: []contentBlock{{Type: "text", Text: "ok"}}})
+		json.NewEncoder(w).Encode(apiResponse{
+			Choices: []choice{{Message: message{Role: "assistant", Content: "ok"}}},
+		})
 	}))
 	defer srv.Close()
 
