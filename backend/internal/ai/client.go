@@ -1,5 +1,6 @@
-// Package ai provides a shared client for calling the Claude API, plus
-// keyword-based retrieval for grounding prompts in a repo's actual content.
+// Package ai provides a shared client for calling Gemini's free-tier API
+// (via its OpenAI-compatible chat completions endpoint), plus keyword-based
+// retrieval for grounding prompts in a repo's actual content.
 //
 // Every AI-backed feature (Q&A, diagram generation, doc generation,
 // tech-debt analysis, PR review) goes through the same Client so there's
@@ -18,13 +19,15 @@ import (
 )
 
 const (
-	defaultAPIURL = "https://api.anthropic.com/v1/messages"
-	defaultVer    = "2023-06-01"
-	DefaultModel  = "claude-sonnet-5"
+	// Gemini's OpenAI-compatible endpoint — same request/response shape as
+	// OpenAI's Chat Completions API, so the parsing below stays simple.
+	defaultAPIURL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+	DefaultModel  = "gemini-2.0-flash"
 )
 
-// Client calls the Claude Messages API. BaseURL and HTTPClient are exported
-// so tests can point at an httptest server instead of the real API.
+// Client calls Gemini's chat completions endpoint. BaseURL and HTTPClient
+// are exported so tests can point at an httptest server instead of the
+// real API.
 type Client struct {
 	APIKey     string
 	Model      string
@@ -32,16 +35,16 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-// NewClientFromEnv builds a Client from ANTHROPIC_API_KEY / ANTHROPIC_MODEL.
+// NewClientFromEnv builds a Client from GEMINI_API_KEY / GEMINI_MODEL.
 // APIKey may be empty; callers get a clear error on first use rather than
 // at construction time, so a server can start even before a key is set.
 func NewClientFromEnv() *Client {
-	model := os.Getenv("ANTHROPIC_MODEL")
+	model := os.Getenv("GEMINI_MODEL")
 	if model == "" {
 		model = DefaultModel
 	}
 	return &Client{
-		APIKey:     os.Getenv("ANTHROPIC_API_KEY"),
+		APIKey:     os.Getenv("GEMINI_API_KEY"),
 		Model:      model,
 		BaseURL:    defaultAPIURL,
 		HTTPClient: &http.Client{Timeout: 60 * time.Second},
@@ -53,23 +56,24 @@ type message struct {
 	Content string `json:"content"`
 }
 
+// apiRequest mirrors the OpenAI Chat Completions request shape, which
+// Gemini's compatibility layer accepts directly — including a "system"
+// role message, unlike Anthropic's separate top-level System field.
 type apiRequest struct {
 	Model     string    `json:"model"`
 	MaxTokens int       `json:"max_tokens"`
-	System    string    `json:"system"`
 	Messages  []message `json:"messages"`
 }
 
-type contentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+type choice struct {
+	Message message `json:"message"`
 }
 
 type apiResponse struct {
-	Content []contentBlock `json:"content"`
+	Choices []choice `json:"choices"`
 	Error   *struct {
-		Type    string `json:"type"`
 		Message string `json:"message"`
+		Type    string `json:"type"`
 	} `json:"error"`
 }
 
@@ -79,12 +83,12 @@ type CompleteOpts struct {
 	MaxTokens int
 }
 
-// Complete sends a system + user prompt to Claude and returns the text
+// Complete sends a system + user prompt to Gemini and returns the text
 // response. Every feature package (diagram, docs, techdebt, prreview,
 // onboarding) calls this rather than talking HTTP directly.
 func (c *Client) Complete(ctx context.Context, system, user string, opts ...CompleteOpts) (string, error) {
 	if c.APIKey == "" {
-		return "", fmt.Errorf("ANTHROPIC_API_KEY is not set on the server")
+		return "", fmt.Errorf("GEMINI_API_KEY is not set on the server")
 	}
 	model := c.Model
 	if model == "" {
@@ -107,8 +111,10 @@ func (c *Client) Complete(ctx context.Context, system, user string, opts ...Comp
 	reqBody := apiRequest{
 		Model:     model,
 		MaxTokens: maxTokens,
-		System:    system,
-		Messages:  []message{{Role: "user", Content: user}},
+		Messages: []message{
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
+		},
 	}
 	buf, err := json.Marshal(reqBody)
 	if err != nil {
@@ -120,12 +126,11 @@ func (c *Client) Complete(ctx context.Context, system, user string, opts ...Comp
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.APIKey)
-	httpReq.Header.Set("anthropic-version", defaultVer)
+	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("calling anthropic api: %w", err)
+		return "", fmt.Errorf("calling gemini api: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -136,20 +141,14 @@ func (c *Client) Complete(ctx context.Context, system, user string, opts ...Comp
 
 	var parsed apiResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("parsing anthropic response: %w (raw: %s)", err, string(body))
+		return "", fmt.Errorf("parsing gemini response: %w (raw: %s)", err, string(body))
 	}
 	if parsed.Error != nil {
-		return "", fmt.Errorf("anthropic api error (%s): %s", parsed.Error.Type, parsed.Error.Message)
+		return "", fmt.Errorf("gemini api error (%s): %s", parsed.Error.Type, parsed.Error.Message)
 	}
-
-	var out bytes.Buffer
-	for _, block := range parsed.Content {
-		if block.Type == "text" {
-			out.WriteString(block.Text)
-		}
-	}
-	if out.Len() == 0 {
+	if len(parsed.Choices) == 0 || parsed.Choices[0].Message.Content == "" {
 		return "", fmt.Errorf("empty response from model (status %d): %s", resp.StatusCode, string(body))
 	}
-	return out.String(), nil
+
+	return parsed.Choices[0].Message.Content, nil
 }
