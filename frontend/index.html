@@ -309,6 +309,13 @@
 </div>
 
 <script>
+// NOTE: $ must be declared first — everything below references it,
+// including code that runs immediately at script load (event listener
+// registration, checkAuth()). Declaring it later caused a
+// ReferenceError: Cannot access '$' before initialization, which
+// aborted the entire script and left every button non-functional.
+const $ = (id) => document.getElementById(id);
+
 const API = ''; // same-origin; backend serves this file too
 let currentRepo = null;
 
@@ -403,7 +410,6 @@ $('tryDemoBtn')?.addEventListener('click', startDemo);
 
 checkAuth();
 
-const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
 const treeEl = $('tree');
 const messagesEl = $('messages');
