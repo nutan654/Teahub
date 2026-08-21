@@ -6,6 +6,14 @@
 # it) as a Render Web Service, backed by a Render-managed Postgres
 # database, wired together automatically via `fromDatabase`.
 #
+# REGION: this service and its database already live in Singapore.
+# `region: singapore` is added below just to make that explicit in the
+# file — since both are already deployed there, this won't trigger a
+# migration on sync (region is only meaningful at creation time).
+# It also keeps this blueprint honest for anyone reading it alongside
+# VisionFlow's render.yaml, which depends on being in the same region
+# to reach teahub-db over Render's private network.
+#
 # Usage: push this file to the repo root, then in the Render Dashboard
 # choose "New +" -> "Blueprint" and point it at this repo. Render reads
 # this file and provisions everything below in one go. See
@@ -17,6 +25,7 @@ services:
   - type: web
     name: teahub
     env: docker
+    region: singapore
     plan: starter
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -68,9 +77,9 @@ services:
       name: teahub-repos
       mountPath: /data
       sizeGB: 1
-
 databases:
   - name: teahub-db
     plan: free
     databaseName: teahub
     user: teahub
+    region: singapore
