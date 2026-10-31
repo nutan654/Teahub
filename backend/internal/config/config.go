@@ -237,9 +237,10 @@ func Load() (*Config, error) {
 		if len(cfg.JWTSigningKey) < 32 {
 			return nil, fmt.Errorf("JWT_SIGNING_KEY must be set and at least 32 bytes in production")
 		}
-		if cfg.GitHubClientID == "" || cfg.GitHubClientSecret == "" {
-			return nil, fmt.Errorf("GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are required when TEAHUB_ENV=production")
-		}
+		// NOTE: GitHub OAuth credentials are intentionally NOT required here.
+		// main.go already logs a warning when they are missing, and
+		// deploy/render.md tells people to deploy once without them to learn
+		// the assigned URL. Making them fatal made that first deploy crash-loop.
 	}
 
 	if cfg.DatabaseURL == "" && !cfg.InMemory {

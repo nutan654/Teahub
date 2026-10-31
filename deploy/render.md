@@ -94,7 +94,7 @@ Dashboard → **New +** → **Web Service** → connect this repo.
   | `GITHUB_CLIENT_SECRET` | from step 3 below |
   | `GITHUB_OAUTH_REDIRECT_URL` | `https://<your-service>.onrender.com/auth/github/callback` |
   | `GEMINI_API_KEY` | your Gemini API key |
-  | `GEMINI_MODEL` | `gemini-2.0-flash` |
+  | `GEMINI_MODEL` | `gemini-3.5-flash` |
 
   (`DEMO_REPO_URL` and the rate-limit/request-size variables in
   `.env.example` all have working defaults — only add them if you need

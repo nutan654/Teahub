@@ -243,8 +243,9 @@
     </div>
     <p id="authGateError" style="color:var(--warn);display:none;"></p>
     <p id="demoUnavailableMsg" style="color:var(--text-dim);font-size:.85rem;display:none;max-width:420px;text-align:center;">
-      Demo mode isn't configured on this deployment (no <code>DEMO_REPO_URL</code> set) — sign in with GitHub to import your own repo instead.
+      The demo repository is still loading (it is cloned and indexed in the background after the server starts) or demo mode isn't configured. Wait about 30 seconds and click the demo button again, or sign in with GitHub to import your own repo.
     </p>
+    <p id="wakeMsg" style="color:var(--text-dim);font-size:.85rem;display:none;max-width:420px;text-align:center;"></p>
   </div>
 
   <div id="demoBanner" style="display:none;padding:.6rem 1.25rem;background:var(--panel-2);border-bottom:1px solid var(--border);color:var(--text-dim);font-size:.85rem;display:none;align-items:center;gap:.6rem;flex-wrap:wrap;">
@@ -369,13 +370,51 @@ function repoApiBase(){
 // instead of adding `credentials: 'include'` to every call site below.
 const _rawFetch = window.fetch.bind(window);
 window.fetch = async (url, opts = {}) => {
-  const res = await _rawFetch(url, { ...opts, credentials: 'include' });
+  let res;
+  try{
+    res = await _rawFetch(url, { ...opts, credentials: 'include' });
+  }catch(err){
+    throw new Error('Cannot reach the server. Check your connection and try again.');
+  }
+  // When the backend is asleep (free hosting) or unreachable, proxies such as
+  // Vercel answer with an HTML/plain-text error page. Callers all do
+  // res.json(), which would throw "Unexpected token '<'". Convert any
+  // non-JSON error into the JSON shape the rest of the app already expects.
+  const ct = res.headers.get('content-type') || '';
+  if(!res.ok && !ct.includes('application/json')){
+    const msg = [502,503,504].includes(res.status)
+      ? `The server is waking up or temporarily unavailable (HTTP ${res.status}). Please retry in about 30 seconds.`
+      : `Unexpected response from the server (HTTP ${res.status}).`;
+    return new Response(JSON.stringify({ error: msg }), { status: res.status, headers: { 'Content-Type': 'application/json' } });
+  }
   if(res.status === 401 && !String(url).includes('/api/me')){
     $('authGate').style.display = 'flex';
     $('userBox').style.display = 'none';
   }
   return res;
 };
+
+// Free hosting sleeps when idle and takes up to ~60s to wake. Poll the
+// health endpoint first so sign-in / demo never hit a cold, half-started
+// server (which looks like "login and demo are broken").
+async function waitForServer(){
+  const gate = $('authGate'), msg = $('wakeMsg');
+  for(let i = 0; i < 25; i++){
+    try{
+      const r = await _rawFetch(API + '/api/health', { cache: 'no-store' });
+      if((r.headers.get('content-type') || '').includes('application/json') && r.ok){
+        msg.style.display = 'none';
+        return true;
+      }
+    }catch(err){ /* keep polling */ }
+    gate.style.display = 'flex';
+    msg.style.display = 'block';
+    msg.textContent = 'Waking up the server (free hosting sleeps when idle)… this can take up to a minute.';
+    await new Promise(r => setTimeout(r, 4000));
+  }
+  msg.textContent = 'The server is not responding yet. Please refresh in a minute.';
+  return false;
+}
 
 // ---- Auth gate: block the app behind GitHub sign-in ----
 async function checkAuth(){
@@ -414,7 +453,7 @@ async function startDemo(){
   btn.textContent = 'Loading demo…';
   try{
     const res = await fetch(API + '/api/demo');
-    if(res.status === 503){
+    if(res.status === 503 || res.status === 404){
       $('demoUnavailableMsg').style.display = 'block';
       return;
     }
@@ -445,7 +484,7 @@ async function startDemo(){
 }
 $('tryDemoBtn')?.addEventListener('click', startDemo);
 
-checkAuth();
+waitForServer().then(ok => { if(ok) checkAuth(); });
 
 const statusEl = $('status');
 const treeEl = $('tree');

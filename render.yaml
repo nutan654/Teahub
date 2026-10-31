@@ -24,9 +24,9 @@
 services:
   - type: web
     name: teahub
-    env: docker
+    runtime: docker
     region: singapore
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
@@ -59,24 +59,23 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # gemini-2.0-flash was shut down 2026-06-01; the server also falls back
+      # automatically if this value is ever retired (see ai/client.go).
       - key: GEMINI_MODEL
-        value: gemini-2.0-flash
+        value: gemini-3.5-flash
       # Optional: set in the Dashboard to turn on the unauthenticated
       # /api/demo/* endpoints (see backend/internal/api/demo.go). Leave
       # unset (the default) to keep Demo Mode fully disabled.
+      # Demo Mode ON by default: a public repo cloned + indexed in the
+      # background at startup so reviewers can use every feature with no
+      # sign-in. Change the value (owner/repo or full URL) to demo another.
       - key: DEMO_REPO_URL
-        sync: false
-    # Cloned repo working trees (see ARCHITECTURE.md "Storage model").
-    # Optional: the app already tolerates re-cloning on a cache miss
-    # (Render's default disk is ephemeral across deploys just like Cloud
-    # Run's), so remove this whole `disk:` block if you'd rather not pay
-    # for a persistent disk on the Starter/free tiers where it may not be
-    # available. Repository *metadata* always lives in Postgres either
-    # way, never on this disk.
-    disk:
-      name: teahub-repos
-      mountPath: /data
-      sizeGB: 1
+        value: golang/example
+    # No persistent disk: Render's free plan doesn't support disks, and a
+    # disk is mounted root-owned, which the non-root `teahub` user in the
+    # Dockerfile cannot write to. Clones live on the container's own
+    # /data/repos (created in the Dockerfile) and are re-cloned on demand
+    # after a restart; repo metadata stays in Postgres.
 databases:
   - name: teahub-db
     plan: free

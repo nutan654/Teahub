@@ -92,17 +92,29 @@ func run() error {
 	warmCancel()
 
 	if cfg.DemoRepoURL != "" {
-		// Cloning + indexing the demo repo can take a while for a large
-		// one; give it more headroom than the general cache warm-up
-		// above, but still don't block startup forever on it — a demo
-		// import failure disables /api/demo/* (503) rather than
-		// crashing the whole server, since Demo Mode is a nice-to-have
-		// on top of the real product, not a dependency of it.
-		demoCtx, demoCancel := context.WithTimeout(ctx, 120*time.Second)
-		if err := srv.ImportDemoRepo(demoCtx); err != nil {
-			logger.Warn("demo_repo_import_failed", "detail", "GET /api/demo and friends will return 503 until this is resolved", "error", err)
-		}
-		demoCancel()
+		// Clone + index the demo repo in the background, with retries.
+		// Doing this before ListenAndServe delayed the port opening by up
+		// to two minutes, which made Render's port scan / health check time
+		// out and mark the deploy as failed. Until it finishes, /api/demo/*
+		// answers 503 ("demo mode is not available right now"), which the
+		// frontend already handles.
+		go func() {
+			const attempts = 4
+			for i := 1; i <= attempts; i++ {
+				demoCtx, demoCancel := context.WithTimeout(ctx, 150*time.Second)
+				err := srv.ImportDemoRepo(demoCtx)
+				demoCancel()
+				if err == nil {
+					return
+				}
+				logger.Warn("demo_repo_import_failed", "attempt", i, "of", attempts, "detail", "/api/demo/* returns 503 until this succeeds", "error", err)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Duration(i) * 15 * time.Second):
+				}
+			}
+		}()
 	}
 
 	httpServer := &http.Server{
