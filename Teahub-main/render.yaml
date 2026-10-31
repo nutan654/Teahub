@@ -1,0 +1,84 @@
+# Render Blueprint for TeaHub.
+#
+# https://render.com/docs/blueprint-spec
+#
+# Deploys the existing multi-stage Dockerfile as-is (no changes needed to
+# it) as a Render Web Service, backed by a Render-managed Postgres
+# database, wired together automatically via `fromDatabase`.
+#
+# REGION: this service and its database already live in Singapore.
+# `region: singapore` is added below just to make that explicit in the
+# file — since both are already deployed there, this won't trigger a
+# migration on sync (region is only meaningful at creation time).
+# It also keeps this blueprint honest for anyone reading it alongside
+# VisionFlow's render.yaml, which depends on being in the same region
+# to reach teahub-db over Render's private network.
+#
+# Usage: push this file to the repo root, then in the Render Dashboard
+# choose "New +" -> "Blueprint" and point it at this repo. Render reads
+# this file and provisions everything below in one go. See
+# deploy/render.md for the full walkthrough, including the handful of
+# secrets (GitHub OAuth, Gemini API key) you still have to paste in by
+# hand — Blueprints deliberately never let you commit secrets to the repo
+# (see the `sync: false` vars below).
+services:
+  - type: web
+    name: teahub
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: TEAHUB_ENV
+        value: production
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: PORT
+        value: "8080"
+      - key: REPO_STORAGE_DIR
+        value: /data/repos
+      - key: DATABASE_URL
+        fromDatabase:
+          name: teahub-db
+          property: connectionString
+      # HS256 session-signing key — Render generates a random 256-bit
+      # value on first sync and never displays it back in this file.
+      - key: JWT_SIGNING_KEY
+        generateValue: true
+      # Everything below is a secret or deployment-specific value with no
+      # safe default; `sync: false` makes Render prompt for it once in
+      # the Dashboard during Blueprint creation (and on manual edits
+      # after), rather than ever living in this committed file.
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_REDIRECT_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # gemini-2.0-flash was shut down 2026-06-01; the server also falls back
+      # automatically if this value is ever retired (see ai/client.go).
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      # Optional: set in the Dashboard to turn on the unauthenticated
+      # /api/demo/* endpoints (see backend/internal/api/demo.go). Leave
+      # unset (the default) to keep Demo Mode fully disabled.
+      # Demo Mode ON by default: a public repo cloned + indexed in the
+      # background at startup so reviewers can use every feature with no
+      # sign-in. Change the value (owner/repo or full URL) to demo another.
+      - key: DEMO_REPO_URL
+        value: golang/example
+    # No persistent disk: Render's free plan doesn't support disks, and a
+    # disk is mounted root-owned, which the non-root `teahub` user in the
+    # Dockerfile cannot write to. Clones live on the container's own
+    # /data/repos (created in the Dockerfile) and are re-cloned on demand
+    # after a restart; repo metadata stays in Postgres.
+databases:
+  - name: teahub-db
+    plan: free
+    databaseName: teahub
+    user: teahub
+    region: singapore

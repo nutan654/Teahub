@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TeaHub — Developer Intelligence Platform</title>
+<meta name="description" content="Import a public GitHub repo, browse it, search it by meaning, generate an architecture diagram, and ask grounded questions with cited sources.">
+<meta name="theme-color" content="#0d1117">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%235fb98c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<style>
+  .sr-only{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0;
+  }
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  button:focus-visible{outline-offset:2px;}
+  .node .row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:3px;}
+  .tab:focus-visible{outline-offset:-2px;}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;}
+  }
+  :root{
+    --bg: #0d1117;
+    --panel: #11161d;
+    --panel-2: #161c25;
+    --border: #232b36;
+    --text: #d7dde5;
+    --text-dim: #7b8794;
+    --accent: #5fb98c;     /* muted "diff-add" green — signature color */
+    --accent-dim: #3d7a5c;
+    --warn: #d97757;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  ::selection{background:var(--accent-dim); color:#fff;}
+
+  .app{display:flex;flex-direction:column;height:100vh;}
+
+  header{
+    display:flex;align-items:center;gap:.6rem;
+    padding: .85rem 1.25rem;border-bottom:1px solid var(--border);
+    background:var(--panel);
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+  header h1{font-family:var(--mono);font-size:.95rem;font-weight:600;letter-spacing:.02em;margin:0;}
+  header .tag{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);border:1px solid var(--border);
+    padding:.1rem .45rem;border-radius:4px;margin-left:.25rem;}
+
+  .import-bar{
+    display:flex;gap:.5rem;padding:.9rem 1.25rem;border-bottom:1px solid var(--border);
+    background:var(--panel-2);
+  }
+  .import-bar input{
+    flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    font-family:var(--mono);font-size:.85rem;padding:.55rem .75rem;border-radius:6px;outline:none;
+  }
+  .import-bar input:focus{border-color:var(--accent-dim);}
+  .import-bar input::placeholder{color:var(--text-dim);}
+  .myrepos{padding:.7rem 1.25rem;border-bottom:1px solid var(--border);background:var(--panel);display:none;}
+  .myrepos.open{display:block;}
+  .myrepos-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;}
+  .myrepos-head h3{font-family:var(--mono);font-size:.75rem;color:var(--text-dim);font-weight:600;letter-spacing:.03em;text-transform:uppercase;margin:0;}
+  .myrepos-head button.ghost{padding:.2rem .55rem;font-size:.72rem;margin-left:auto;}
+  .myrepos-list{display:flex;flex-wrap:wrap;gap:.5rem;}
+  .myrepos-empty{font-family:var(--mono);font-size:.78rem;color:var(--text-dim);}
+  .repo-chip{
+    display:flex;align-items:center;gap:.5rem;background:var(--panel-2);border:1px solid var(--border);
+    border-radius:6px;padding:.4rem .65rem;cursor:pointer;font-family:var(--mono);font-size:.78rem;color:var(--text);
+    max-width:280px;
+  }
+  .repo-chip:hover{border-color:var(--accent-dim);}
+  .repo-chip.active{border-color:var(--accent);color:var(--accent);}
+  .repo-chip .repo-chip-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .repo-chip .repo-chip-files{color:var(--text-dim);flex-shrink:0;}
+  .repo-chip .repo-chip-del{color:var(--text-dim);flex-shrink:0;padding:0 .15rem;border-radius:3px;}
+  .repo-chip .repo-chip-del:hover{color:var(--warn);}
+  .myrepos-toggle{
+    font-family:var(--mono);font-size:.78rem;color:var(--text-dim);background:transparent;border:none;
+    cursor:pointer;padding:.9rem 1.25rem;text-align:left;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:.4rem;
+  }
+  .myrepos-toggle:hover{color:var(--text);}
+  .myrepos-toggle .count{color:var(--accent);}
+  button{
+    font-family:var(--mono);font-size:.8rem;font-weight:600;border-radius:6px;border:1px solid var(--accent-dim);
+    background:var(--accent);color:#08130d;padding:.55rem 1rem;cursor:pointer;letter-spacing:.01em;
+  }
+  button:hover{filter:brightness(1.08);}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  button.ghost{background:transparent;color:var(--text);border-color:var(--border);}
+
+  .body{flex:1;display:grid;grid-template-columns:280px 1fr;overflow:hidden;position:relative;}
+
+  .filesToggle{display:none;}
+  .treeScrim{display:none;}
+
+  @media (max-width: 760px){
+    .body{grid-template-columns:1fr;}
+    .filesToggle{display:inline-flex;align-items:center;gap:.4rem;}
+    .tree-pane{
+      display:flex;position:fixed;top:0;left:0;bottom:0;width:min(82vw,320px);z-index:20;
+      transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 24px rgba(0,0,0,.5);
+    }
+    .tree-pane.open{transform:translateX(0);}
+    .treeScrim{
+      display:block;position:fixed;inset:0;background:rgba(0,0,0,0);pointer-events:none;
+      transition:background .22s ease;z-index:19;
+    }
+    .treeScrim.open{background:rgba(0,0,0,.5);pointer-events:auto;}
+  }
+
+  .tree-pane{border-right:1px solid var(--border);background:var(--panel);overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;}
+  .tree-pane-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;}
+  .tree-pane h2{font-family:var(--mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--text-dim);margin:.25rem 0 .6rem .25rem;}
+  .tree-toggle-all{font-family:var(--mono);font-size:.68rem;color:var(--text-dim);background:transparent;
+    border:1px solid var(--border);padding:.15rem .45rem;border-radius:5px;cursor:pointer;letter-spacing:.02em;}
+  .tree-toggle-all:hover{color:var(--text);border-color:var(--accent-dim);}
+  .tree-close{display:none;}
+  @media (max-width: 760px){ .tree-close{display:inline-flex;} }
+  .tree-filter{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    font-family:var(--mono);font-size:.76rem;padding:.4rem .55rem;border-radius:6px;outline:none;margin-bottom:.6rem;}
+  .tree-filter:focus{border-color:var(--accent-dim);}
+  .tree-filter:disabled{opacity:.5;}
+  #tree{flex:1;overflow-y:auto;}
+  .node{font-family:var(--mono);font-size:.78rem;line-height:1.55;}
+  .node .row{padding-left:calc(var(--depth,0) * 14px);color:var(--text-dim);white-space:nowrap;}
+  .node.file .row::before{content:"·"; color:var(--text-dim); margin-right:.4em;}
+  .node.dir > .row{color:var(--text);cursor:pointer;user-select:none;}
+  .node.dir > .row::before{content:"▾ "; color:var(--accent);display:inline-block;width:1em;}
+  .node.dir.collapsed > .row::before{content:"▸ ";}
+  .node.dir.collapsed > .children{display:none;}
+  .node.hidden{display:none;}
+  .empty-hint{color:var(--text-dim);font-size:.82rem;padding:.5rem .25rem;line-height:1.5;}
+
+  .messages{flex:1;overflow-y:auto;padding:1.25rem;display:flex;flex-direction:column;gap:1rem;}
+  .msg{max-width:720px;}
+  .msg.user{align-self:flex-end;}
+  .msg .bubble{
+    font-size:.9rem;line-height:1.55;padding:.7rem .9rem;border-radius:8px;border:1px solid var(--border);
+  }
+  .msg.user .bubble{background:var(--panel-2);}
+  .msg.assistant .bubble{background:var(--panel);font-family:var(--mono);white-space:pre-wrap;}
+  .msg .sources{font-family:var(--mono);font-size:.7rem;color:var(--accent);margin-top:.4rem;}
+  .msg .role-label{font-family:var(--mono);font-size:.68rem;color:var(--text-dim);margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.06em;}
+
+  .ask-bar{display:flex;gap:.5rem;padding:.9rem 1.25rem;border-top:1px solid var(--border);background:var(--panel-2);}
+  .ask-bar input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    font-family:var(--sans);font-size:.88rem;padding:.6rem .8rem;border-radius:6px;outline:none;}
+  .ask-bar input:focus{border-color:var(--accent-dim);}
+
+  .placeholder{margin:auto;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:.85rem;max-width:420px;}
+  .placeholder .cursor{display:inline-block;width:8px;height:16px;background:var(--accent);
+    animation:blink 1s step-end infinite;vertical-align:middle;margin-left:2px;}
+  @keyframes blink{50%{opacity:0;}}
+
+  .status{font-family:var(--mono);font-size:.75rem;color:var(--text-dim);padding:0 1.25rem;}
+  .status.error{color:var(--warn);}
+
+  .tabs{display:flex;gap:.25rem;padding:.6rem 1.25rem 0;background:var(--panel-2);border-bottom:1px solid var(--border);}
+  .tab{font-family:var(--mono);font-size:.78rem;color:var(--text-dim);background:transparent;border:1px solid transparent;
+    border-bottom:none;padding:.5rem .9rem;border-radius:6px 6px 0 0;cursor:pointer;}
+  .tab.active{color:var(--text);background:var(--bg);border-color:var(--border);}
+  .tab-panel{display:none;flex:1;min-height:0;flex-direction:column;}
+  .tab-panel.active{display:flex;}
+
+  .node .row{cursor:default;}
+  .node.file .row{cursor:pointer;}
+  .node.file .row:hover{color:var(--accent);}
+  .node.file.selected > .row{color:var(--accent);font-weight:600;}
+
+  .viewer-overlay{
+    position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column;z-index:5;
+  }
+  .viewer-overlay.open{display:flex;}
+  .viewer-header{display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;border-bottom:1px solid var(--border);background:var(--panel);}
+  .viewer-header .path{font-family:var(--mono);font-size:.82rem;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .viewer-header .lang{font-family:var(--mono);font-size:.68rem;color:var(--text-dim);border:1px solid var(--border);padding:.1rem .4rem;border-radius:4px;}
+  .viewer-body{flex:1;overflow:auto;padding:0;}
+  .viewer-body pre{margin:0;padding:1rem 1.25rem;font-size:.82rem;}
+  .viewer-body code.hljs{background:transparent;}
+  .viewer-truncated{font-family:var(--mono);font-size:.72rem;color:var(--warn);padding:.4rem 1.25rem;border-top:1px solid var(--border);}
+
+  .chat-pane, .diagram-pane{position:relative;flex:1;display:flex;flex-direction:column;min-height:0;}
+
+  .diagram-pane{overflow-y:auto;padding:1.25rem;}
+  .diagram-controls{display:flex;gap:.5rem;align-items:center;margin-bottom:1rem;}
+  .diagram-controls .hint{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);}
+  .diagram-explanation{font-size:.88rem;line-height:1.6;color:var(--text);background:var(--panel);
+    border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:1rem;white-space:pre-wrap;}
+  .mermaid-container{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow-x:auto;}
+  .diagram-placeholder{margin:auto;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:.85rem;}
+
+  .search-pane{flex:1;display:flex;flex-direction:column;min-height:0;}
+  .search-bar{display:flex;gap:.5rem;padding:.9rem 1.25rem;border-bottom:1px solid var(--border);background:var(--panel-2);}
+  .search-bar input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    font-family:var(--sans);font-size:.88rem;padding:.6rem .8rem;border-radius:6px;outline:none;}
+  .search-bar input:focus{border-color:var(--accent-dim);}
+  .search-results{flex:1;overflow-y:auto;padding:1.25rem;display:flex;flex-direction:column;gap:.6rem;}
+  .search-placeholder{margin:auto;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:.85rem;max-width:420px;}
+  .result-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;cursor:pointer;}
+  .result-card:hover{border-color:var(--accent-dim);}
+  .result-card .result-path{font-family:var(--mono);font-size:.82rem;color:var(--accent);margin-bottom:.3rem;}
+  .result-card .result-reason{font-size:.84rem;color:var(--text-dim);line-height:1.45;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="dot"></span>
+    <h1>TEA<span style="color:var(--accent)">HUB</span></h1>
+    <span class="tag">repo explorer · semantic search · AI Q&amp;A · architecture diagrams</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:.6rem;">
+      <button id="filesToggleBtn" class="ghost filesToggle" aria-expanded="false" aria-controls="treePane">
+        ☰ Files
+      </button>
+      <div id="userBox" style="display:none;align-items:center;gap:.6rem;font-family:var(--mono);font-size:.8rem;color:var(--text-dim);">
+        <span id="userLogin"></span>
+        <button id="logoutBtn" class="ghost">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="authGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;flex-direction:column;align-items:center;justify-content:center;gap:1rem;">
+    <h1 style="font-family:var(--mono);">TEA<span style="color:var(--accent)">HUB</span></h1>
+    <p style="color:var(--text-dim);max-width:420px;text-align:center;">
+      Sign in with GitHub to import repositories, ask questions, and search codebases. Each repository you import is private to your account.
+    </p>
+    <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:center;">
+      <a id="signInLink" href="/auth/github/login" style="background:var(--accent);color:#08110d;padding:.6rem 1.2rem;border-radius:6px;font-weight:600;text-decoration:none;font-family:var(--sans);">
+        Sign in with GitHub
+      </a>
+      <button id="tryDemoBtn" type="button" style="background:transparent;color:var(--text);border:1px solid var(--border);padding:.6rem 1.2rem;border-radius:6px;font-weight:600;font-family:var(--sans);cursor:pointer;">
+        Try live demo — no sign-in
+      </button>
+    </div>
+    <p id="authGateError" style="color:var(--warn);display:none;"></p>
+    <p id="demoUnavailableMsg" style="color:var(--text-dim);font-size:.85rem;display:none;max-width:420px;text-align:center;">
+      The demo repository is still loading (it is cloned and indexed in the background after the server starts) or demo mode isn't configured. Wait about 30 seconds and click the demo button again, or sign in with GitHub to import your own repo.
+    </p>
+    <p id="wakeMsg" style="color:var(--text-dim);font-size:.85rem;display:none;max-width:420px;text-align:center;"></p>
+  </div>
+
+  <div id="demoBanner" style="display:none;padding:.6rem 1.25rem;background:var(--panel-2);border-bottom:1px solid var(--border);color:var(--text-dim);font-size:.85rem;display:none;align-items:center;gap:.6rem;flex-wrap:wrap;">
+    <span style="color:var(--accent);font-weight:600;font-family:var(--mono);">DEMO MODE</span>
+    <span>Read-only, pre-indexed repository — every visitor shares this same view.</span>
+    <a href="/auth/github/login" style="color:var(--accent);text-decoration:underline;margin-left:auto;">Sign in with GitHub to import your own repos →</a>
+  </div>
+  <div class="import-bar" id="importBar">
+    <label class="sr-only" for="repoUrl">GitHub repository URL</label>
+    <input id="repoUrl" type="text" placeholder="github.com/owner/repo  (paste a public GitHub repo URL)" />
+    <button id="importBtn">Import</button>
+  </div>
+  <button type="button" class="myrepos-toggle" id="myReposToggle" style="display:none;" aria-expanded="false" aria-controls="myReposPanel">
+    <span id="myReposToggleIcon">▸</span> Your repositories <span class="count" id="myReposCount"></span>
+  </button>
+  <div class="myrepos" id="myReposPanel">
+    <div class="myrepos-head">
+      <h3>Previously imported</h3>
+      <button type="button" class="ghost" id="myReposRefreshBtn">Refresh</button>
+    </div>
+    <div class="myrepos-list" id="myReposList"><span class="myrepos-empty">Loading…</span></div>
+  </div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <div class="body">
+    <div class="treeScrim" id="treeScrim"></div>
+    <div class="tree-pane" id="treePane">
+      <div class="tree-pane-head">
+        <h2>File tree</h2>
+        <div style="display:flex;gap:.35rem;">
+          <button type="button" class="tree-toggle-all" id="expandAllBtn">Expand all</button>
+          <button type="button" class="tree-toggle-all" id="collapseAllBtn">Collapse all</button>
+          <button type="button" class="ghost tree-close" id="treeCloseBtn" aria-label="Close file tree" style="padding:.15rem .5rem;">✕</button>
+        </div>
+      </div>
+      <label class="sr-only" for="treeFilter">Filter files by name</label>
+      <input id="treeFilter" type="text" placeholder="Filter files…" class="tree-filter" disabled />
+      <div id="tree" role="tree" aria-label="Repository file tree"><div class="empty-hint">Import a repo to see its structure here.</div></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;flex:1;min-height:0;position:relative;">
+      <div class="tabs" role="tablist" aria-label="Repository views">
+        <button class="tab active" id="tabbtn-chat" data-tab="chat" role="tab" aria-selected="true" aria-controls="tab-chat" tabindex="0">Chat</button>
+        <button class="tab" id="tabbtn-search" data-tab="search" role="tab" aria-selected="false" aria-controls="tab-search" tabindex="-1">Search</button>
+        <button class="tab" id="tabbtn-diagram" data-tab="diagram" role="tab" aria-selected="false" aria-controls="tab-diagram" tabindex="-1">Architecture</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-chat" role="tabpanel" aria-labelledby="tabbtn-chat" tabindex="0">
+        <div class="chat-pane">
+          <div class="messages" id="messages" aria-live="polite">
+            <div class="placeholder">
+              Import a public GitHub repo above, then ask it things like<br>
+              <em>"where is authentication handled?"</em> or <em>"explain the folder structure"</em><span class="cursor"></span>
+            </div>
+          </div>
+          <div class="ask-bar">
+            <label class="sr-only" for="question">Ask a question about the codebase</label>
+            <input id="question" type="text" placeholder="Ask something about the codebase…" disabled />
+            <button id="askBtn" class="ghost" disabled>Ask</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-search" role="tabpanel" aria-labelledby="tabbtn-search" tabindex="0">
+        <div class="search-pane">
+          <div class="search-bar">
+            <label class="sr-only" for="searchQuery">Search the codebase by meaning</label>
+            <input id="searchQuery" type="text" placeholder="Search by meaning, e.g. &quot;where do we validate incoming webhooks&quot;…" disabled />
+            <button id="searchBtn" disabled>Search</button>
+          </div>
+          <div class="search-results" id="searchResults">
+            <div class="search-placeholder">Import a repo, then search it by meaning — not just keywords.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-diagram" role="tabpanel" aria-labelledby="tabbtn-diagram" tabindex="0">
+        <div class="diagram-pane" id="diagramPane">
+          <div class="diagram-placeholder">Import a repo, then generate its architecture diagram here.</div>
+        </div>
+      </div>
+
+      <div class="viewer-overlay" id="viewerOverlay" role="dialog" aria-modal="true" aria-label="File viewer">
+        <div class="viewer-header">
+          <span class="path" id="viewerPath"></span>
+          <span class="lang" id="viewerLang"></span>
+          <button class="ghost" id="explainFileBtn">Explain this file</button>
+          <button class="ghost" id="closeViewerBtn">✕ Close</button>
+        </div>
+        <div class="viewer-body"><pre><code id="viewerCode" class="hljs"></code></pre></div>
+        <div class="viewer-truncated" id="viewerTruncated" style="display:none;">
+          File truncated for preview — showing the first portion only.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// NOTE: $ must be declared first — everything below references it,
+// including code that runs immediately at script load (event listener
+// registration, checkAuth()). Declaring it later caused a
+// ReferenceError: Cannot access '$' before initialization, which
+// aborted the entire script and left every button non-functional.
+const $ = (id) => document.getElementById(id);
+
+const API = ''; // same-origin; backend serves this file too
+let currentRepo = null;
+
+// repoApiBase() is the one seam that lets every existing tab (Explorer,
+// Chat, Search, Architecture) work unmodified against either a real,
+// authenticated repo or the shared read-only Demo Mode repo — see
+// backend/internal/api/demo.go for the server side. currentRepo.isDemo
+// is set once, in startDemo() below, and never toggled per-request.
+function repoApiBase(){
+  return currentRepo.isDemo ? '/api/demo' : `/api/repos/${currentRepo.id}`;
+}
+
+// Every API call must carry the session cookie, including if the frontend
+// is ever served from a different origin than the API (FRONTEND_ORIGIN
+// config) rather than same-origin as it is by default — patched once here
+// instead of adding `credentials: 'include'` to every call site below.
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async (url, opts = {}) => {
+  let res;
+  try{
+    res = await _rawFetch(url, { ...opts, credentials: 'include' });
+  }catch(err){
+    throw new Error('Cannot reach the server. Check your connection and try again.');
+  }
+  // When the backend is asleep (free hosting) or unreachable, proxies such as
+  // Vercel answer with an HTML/plain-text error page. Callers all do
+  // res.json(), which would throw "Unexpected token '<'". Convert any
+  // non-JSON error into the JSON shape the rest of the app already expects.
+  const ct = res.headers.get('content-type') || '';
+  if(!res.ok && !ct.includes('application/json')){
+    const msg = [502,503,504].includes(res.status)
+      ? `The server is waking up or temporarily unavailable (HTTP ${res.status}). Please retry in about 30 seconds.`
+      : `Unexpected response from the server (HTTP ${res.status}).`;
+    return new Response(JSON.stringify({ error: msg }), { status: res.status, headers: { 'Content-Type': 'application/json' } });
+  }
+  if(res.status === 401 && !String(url).includes('/api/me')){
+    $('authGate').style.display = 'flex';
+    $('userBox').style.display = 'none';
+  }
+  return res;
+};
+
+// Free hosting sleeps when idle and takes up to ~60s to wake. Poll the
+// health endpoint first so sign-in / demo never hit a cold, half-started
+// server (which looks like "login and demo are broken").
+async function waitForServer(){
+  const gate = $('authGate'), msg = $('wakeMsg');
+  for(let i = 0; i < 25; i++){
+    try{
+      const r = await _rawFetch(API + '/api/health', { cache: 'no-store' });
+      if((r.headers.get('content-type') || '').includes('application/json') && r.ok){
+        msg.style.display = 'none';
+        return true;
+      }
+    }catch(err){ /* keep polling */ }
+    gate.style.display = 'flex';
+    msg.style.display = 'block';
+    msg.textContent = 'Waking up the server (free hosting sleeps when idle)… this can take up to a minute.';
+    await new Promise(r => setTimeout(r, 4000));
+  }
+  msg.textContent = 'The server is not responding yet. Please refresh in a minute.';
+  return false;
+}
+
+// ---- Auth gate: block the app behind GitHub sign-in ----
+async function checkAuth(){
+  try{
+    const res = await fetch(API + '/api/me');
+    if(res.ok){
+      const me = await res.json();
+      $('authGate').style.display = 'none';
+      const box = $('userBox');
+      box.style.display = 'flex';
+      $('userLogin').textContent = '@' + me.githubLogin;
+      $('myReposToggle').style.display = 'flex';
+      loadMyRepos();
+      return true;
+    }
+  }catch(err){ /* fall through to sign-in gate */ }
+  $('authGate').style.display = 'flex';
+  $('userBox').style.display = 'none';
+  return false;
+}
+
+$('logoutBtn')?.addEventListener('click', async () => {
+  try{ await fetch(API + '/auth/logout', { method: 'POST' }); }catch(err){}
+  window.location.reload();
+});
+
+// ---- Demo Mode: everything a recruiter/reviewer needs, zero setup ----
+// Loads the one pre-indexed repo the server clones at startup (see
+// ImportDemoRepo) and drives the exact same UI (tree, Chat, Search,
+// Architecture) as a real import, just pointed at /api/demo/* — see
+// repoApiBase() above and the branches in ask()/openFile()/runSearch()/
+// loadDiagram() below.
+async function startDemo(){
+  const btn = $('tryDemoBtn');
+  btn.disabled = true;
+  btn.textContent = 'Loading demo…';
+  try{
+    const res = await fetch(API + '/api/demo');
+    if(res.status === 503 || res.status === 404){
+      $('demoUnavailableMsg').style.display = 'block';
+      return;
+    }
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'failed to load demo');
+
+    currentRepo = data;
+    currentRepo.isDemo = true;
+
+    $('authGate').style.display = 'none';
+    $('demoBanner').style.display = 'flex';
+    $('importBar').style.display = 'none';
+
+    treeEl.innerHTML = '';
+    renderTree(data.tree, treeEl);
+    setStatus(`Demo: ${data.url} — ${data.fileCount} files (${data.symbolCount || 0} symbols indexed).`);
+    questionInput.disabled = false;
+    askBtn.disabled = false;
+    treeFilterInput.disabled = false;
+    searchQueryInput.disabled = false;
+    searchBtn.disabled = false;
+  }catch(err){
+    setStatus('Error loading demo: ' + err.message, true);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Try live demo — no sign-in';
+  }
+}
+$('tryDemoBtn')?.addEventListener('click', startDemo);
+
+waitForServer().then(ok => { if(ok) checkAuth(); });
+
+const statusEl = $('status');
+const treeEl = $('tree');
+const messagesEl = $('messages');
+const questionInput = $('question');
+const askBtn = $('askBtn');
+const treeFilterInput = $('treeFilter');
+treeFilterInput.addEventListener('input', () => filterTree(treeFilterInput.value));
+
+function setStatus(text, isError=false){
+  statusEl.textContent = text;
+  statusEl.classList.toggle('error', isError);
+}
+
+// Renders node's children directly into parentEl (no extra wrapper div),
+// so ".children > .node" selectors in filterTree reflect true nesting depth.
+// Each row is a real keyboard target: role="treeitem", tabindex, and
+// Enter/Space/arrow-key handling, so the tree is fully usable without a mouse.
+function renderTree(node, parentEl, depth=0){
+  for(const child of (node.children || [])){
+    const wrap = document.createElement('div');
+    wrap.className = 'node ' + (child.isDir ? 'dir' : 'file');
+    wrap.dataset.name = child.path.split('/').pop().toLowerCase();
+    wrap.dataset.path = child.path;
+    wrap.setAttribute('role', 'treeitem');
+    if(child.isDir) wrap.setAttribute('aria-expanded', 'true');
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.setProperty('--depth', depth);
+    row.textContent = child.path.split('/').pop();
+    row.tabIndex = 0;
+
+    const toggleDir = () => {
+      wrap.classList.toggle('collapsed');
+      wrap.setAttribute('aria-expanded', String(!wrap.classList.contains('collapsed')));
+    };
+
+    if(child.isDir){
+      row.addEventListener('click', toggleDir);
+    } else {
+      row.addEventListener('click', () => openFile(child.path, wrap));
+    }
+
+    row.addEventListener('keydown', (e) => {
+      const visibleRows = Array.from(treeEl.querySelectorAll('.node:not(.hidden) > .row'));
+      const idx = visibleRows.indexOf(row);
+      switch(e.key){
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          child.isDir ? toggleDir() : openFile(child.path, wrap);
+          break;
+        case 'ArrowRight':
+          if(child.isDir){ e.preventDefault(); wrap.classList.remove('collapsed'); wrap.setAttribute('aria-expanded','true'); }
+          break;
+        case 'ArrowLeft':
+          if(child.isDir && !wrap.classList.contains('collapsed')){
+            e.preventDefault(); wrap.classList.add('collapsed'); wrap.setAttribute('aria-expanded','false');
+          }
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          if(visibleRows[idx+1]) visibleRows[idx+1].focus();
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if(visibleRows[idx-1]) visibleRows[idx-1].focus();
+          break;
+      }
+    });
+
+    wrap.appendChild(row);
+    if(child.isDir && child.children){
+      const childrenWrap = document.createElement('div');
+      childrenWrap.className = 'children';
+      childrenWrap.setAttribute('role', 'group');
+      renderTree(child, childrenWrap, depth+1);
+      wrap.appendChild(childrenWrap);
+    }
+    parentEl.appendChild(wrap);
+  }
+}
+
+function setAllDirsCollapsed(collapsed){
+  treeEl.querySelectorAll('.node.dir').forEach(dir => {
+    dir.classList.toggle('collapsed', collapsed);
+    dir.setAttribute('aria-expanded', String(!collapsed));
+  });
+}
+$('expandAllBtn').addEventListener('click', () => setAllDirsCollapsed(false));
+$('collapseAllBtn').addEventListener('click', () => setAllDirsCollapsed(true));
+
+// Filters the rendered tree in place by filename substring. Matching files
+// stay visible with their ancestor directories auto-expanded; directories
+// that contain no match (directly or nested) are hidden entirely.
+function filterTree(query){
+  const q = query.trim().toLowerCase();
+  const allNodes = treeEl.querySelectorAll('.node');
+  if(!q){
+    allNodes.forEach(n => { n.classList.remove('hidden'); });
+    return;
+  }
+  // Work bottom-up isn't necessary here since each dir's visibility only
+  // depends on its own descendants, computed via a recursive check.
+  function nodeMatches(el){
+    const isDir = el.classList.contains('dir');
+    if(!isDir){
+      return el.dataset.name.includes(q);
+    }
+    const childrenWrap = el.querySelector(':scope > .children');
+    let anyChildVisible = false;
+    if(childrenWrap){
+      childrenWrap.querySelectorAll(':scope > .node').forEach(child => {
+        if(nodeMatches(child)) anyChildVisible = true;
+      });
+    }
+    const selfMatches = el.dataset.name.includes(q);
+    const visible = selfMatches || anyChildVisible;
+    el.classList.toggle('hidden', !visible);
+    if(visible && anyChildVisible) el.classList.remove('collapsed'); // auto-expand to reveal matches
+    return visible;
+  }
+  treeEl.querySelectorAll(':scope > .node').forEach(nodeMatches);
+}
+
+function addMessage(role, text, sources){
+  // clear placeholder on first real message
+  const ph = messagesEl.querySelector('.placeholder');
+  if(ph) ph.remove();
+
+  const msg = document.createElement('div');
+  msg.className = 'msg ' + role;
+  const label = document.createElement('div');
+  label.className = 'role-label';
+  label.textContent = role === 'user' ? 'You' : 'TeaHub';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  msg.appendChild(label);
+  msg.appendChild(bubble);
+  if(sources && sources.length){
+    const s = document.createElement('div');
+    s.className = 'sources';
+    s.textContent = 'sources: ' + sources.join(', ');
+    msg.appendChild(s);
+  }
+  messagesEl.appendChild(msg);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return bubble;
+}
+
+// ---- Your repositories: lets a signed-in user reopen anything they've
+// already imported instead of hitting the 409 "already imported" wall
+// with no way back in. Backed by GET /api/repos (see API.md) — each row
+// already carries `tree`, so opening one is just a local state swap, no
+// extra fetch needed, identical to the success path of importRepo().
+let myRepos = [];
+
+function setActiveChip(){
+  document.querySelectorAll('.repo-chip').forEach(chip => {
+    chip.classList.toggle('active', !!currentRepo && !currentRepo.isDemo && chip.dataset.id === currentRepo.id);
+  });
+}
+
+function renderMyRepos(){
+  const listEl = $('myReposList');
+  $('myReposCount').textContent = myRepos.length ? `(${myRepos.length})` : '';
+  if(!myRepos.length){
+    listEl.innerHTML = '<span class="myrepos-empty">Nothing imported yet — paste a repo URL above.</span>';
+    return;
+  }
+  listEl.innerHTML = '';
+  for(const repo of myRepos){
+    const chip = document.createElement('div');
+    chip.className = 'repo-chip';
+    chip.dataset.id = repo.id;
+    chip.title = repo.url;
+    chip.innerHTML = `<span class="repo-chip-url"></span><span class="repo-chip-files"></span><span class="repo-chip-del" title="Delete">✕</span>`;
+    chip.querySelector('.repo-chip-url').textContent = repo.url.replace(/^https?:\/\/(www\.)?github\.com\//i, '');
+    chip.querySelector('.repo-chip-files').textContent = repo.status === 'ready' ? `${repo.fileCount ?? 0}f` : (repo.status || '');
+    chip.addEventListener('click', (e) => {
+      if(e.target.classList.contains('repo-chip-del')) return;
+      openRepoFromList(repo);
+    });
+    chip.querySelector('.repo-chip-del').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if(!confirm(`Delete ${repo.url}? This removes its indexed clone too.`)) return;
+      try{
+        const res = await fetch(API + `/api/repos/${repo.id}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok) throw new Error(data.error || 'delete failed');
+        if(currentRepo && !currentRepo.isDemo && currentRepo.id === repo.id){
+          currentRepo = null;
+          resetRepoUI();
+        }
+        await loadMyRepos();
+      }catch(err){
+        setStatus('Error: ' + err.message, true);
+      }
+    });
+    listEl.appendChild(chip);
+  }
+  setActiveChip();
+}
+
+async function loadMyRepos(){
+  try{
+    const res = await fetch(API + '/api/repos?limit=100');
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'failed to list repositories');
+    myRepos = data.repos || [];
+    renderMyRepos();
+  }catch(err){
+    $('myReposList').innerHTML = `<span class="myrepos-empty">Couldn't load your repositories: ${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// Opens a repo the caller already imported, straight from the list —
+// no re-clone, no 409, no dead end. Mirrors the success branch of
+// importRepo() so every existing tab behaves identically either way.
+function openRepoFromList(repo){
+  currentRepo = repo;
+  treeEl.innerHTML = '';
+  renderTree(repo.tree, treeEl);
+  setStatus(`Opened ${repo.url} — ${repo.fileCount ?? 0} files indexed.`);
+  questionInput.disabled = false;
+  askBtn.disabled = false;
+  questionInput.focus();
+  treeFilterInput.disabled = false;
+  treeFilterInput.value = '';
+  searchQueryInput.disabled = false;
+  searchBtn.disabled = false;
+
+  viewerOverlay.classList.remove('open');
+  selectedFileNode = null;
+  currentFilePath = null;
+  messagesEl.innerHTML = '<div class="placeholder">Ask this repo something, e.g. <em>"where is authentication handled?"</em><span class="cursor"></span></div>';
+  searchResultsEl.innerHTML = '<div class="search-placeholder">Import a repo, then search it by meaning — not just keywords.</div>';
+  diagramPane.innerHTML = '<div class="diagram-placeholder">Switch to this tab to generate an architecture diagram.</div>';
+
+  setActiveChip();
+  $('myReposPanel').classList.remove('open');
+  $('myReposToggle').setAttribute('aria-expanded', 'false');
+  $('myReposToggleIcon').textContent = '▸';
+}
+
+// Resets the tabs to their empty state, used when the currently-open
+// repo gets deleted out from under the viewer.
+function resetRepoUI(){
+  treeEl.innerHTML = '<div class="empty-hint">Import a repo to see its structure here.</div>';
+  questionInput.disabled = true;
+  askBtn.disabled = true;
+  treeFilterInput.disabled = true;
+  searchQueryInput.disabled = true;
+  searchBtn.disabled = true;
+  messagesEl.innerHTML = '<div class="placeholder">Import a public GitHub repo above, then ask it things like<br><em>"where is authentication handled?"</em> or <em>"explain the folder structure"</em><span class="cursor"></span></div>';
+  searchResultsEl.innerHTML = '<div class="search-placeholder">Import a repo, then search it by meaning — not just keywords.</div>';
+  diagramPane.innerHTML = '<div class="diagram-placeholder">Import a repo, then generate its architecture diagram here.</div>';
+  setStatus('');
+}
+
+$('myReposToggle').addEventListener('click', () => {
+  const panel = $('myReposPanel');
+  const nowOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', nowOpen);
+  $('myReposToggle').setAttribute('aria-expanded', String(nowOpen));
+  $('myReposToggleIcon').textContent = nowOpen ? '▾' : '▸';
+  if(nowOpen) loadMyRepos();
+});
+$('myReposRefreshBtn').addEventListener('click', (e) => { e.stopPropagation(); loadMyRepos(); });
+
+async function importRepo(){
+  const url = $('repoUrl').value.trim();
+  if(!url) return;
+  $('importBtn').disabled = true;
+  setStatus('Cloning and indexing repository…');
+  try{
+    const res = await fetch(API + '/api/import', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if(!res.ok){
+      // 409 means this URL is already imported to this account — not an
+      // error the user can act on by retrying. Look it up in the repo
+      // list (refreshing first, in case it's stale) and open it directly
+      // instead of leaving them stuck with no path back to it.
+      if(res.status === 409){
+        await loadMyRepos();
+        const norm = s => s.replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\.git$|\/$/i, '').toLowerCase();
+        const existing = myRepos.find(r => norm(r.url) === norm(url));
+        if(existing){
+          openRepoFromList(existing);
+          setStatus(`Already imported — opened your existing copy of ${existing.url}.`);
+          return;
+        }
+      }
+      throw new Error(data.error || 'import failed');
+    }
+    currentRepo = data;
+    treeEl.innerHTML = '';
+    renderTree(data.tree, treeEl);
+    setStatus(`Imported ${data.url} — ${data.fileCount} files indexed.`);
+    questionInput.disabled = false;
+    askBtn.disabled = false;
+    questionInput.focus();
+    treeFilterInput.disabled = false;
+    treeFilterInput.value = '';
+    searchQueryInput.disabled = false;
+    searchBtn.disabled = false;
+
+    // Reset per-repo UI state from any previous import.
+    viewerOverlay.classList.remove('open');
+    selectedFileNode = null;
+    currentFilePath = null;
+    searchResultsEl.innerHTML = '<div class="search-placeholder">Import a repo, then search it by meaning — not just keywords.</div>';
+    diagramPane.innerHTML = '<div class="diagram-placeholder">Switch to this tab to generate an architecture diagram.</div>';
+
+    loadMyRepos();
+  }catch(err){
+    setStatus('Error: ' + err.message, true);
+  }finally{
+    $('importBtn').disabled = false;
+  }
+}
+
+async function ask(){
+  const q = questionInput.value.trim();
+  if(!q || !currentRepo) return;
+  addMessage('user', q);
+  questionInput.value = '';
+  askBtn.disabled = true;
+  const bubble = addMessage('assistant', 'Thinking…');
+  try{
+    // Demo Mode has exactly one repo server-side, so repoId in the body
+    // is ignored by /api/demo/ask — sent anyway so this call site stays
+    // identical between the two modes.
+    const askUrl = currentRepo.isDemo ? '/api/demo/ask' : '/api/ask';
+    const res = await fetch(API + askUrl, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({repoId: currentRepo.id, question: q})
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'ask failed');
+    bubble.textContent = data.answer;
+    if(data.sourceFiles && data.sourceFiles.length){
+      const s = document.createElement('div');
+      s.className = 'sources';
+      s.textContent = 'sources: ' + data.sourceFiles.join(', ');
+      bubble.parentElement.appendChild(s);
+    }
+  }catch(err){
+    bubble.textContent = 'Error: ' + err.message;
+  }finally{
+    askBtn.disabled = false;
+  }
+}
+
+// ---- Interactive Repository Explorer: file viewer ----
+
+const viewerOverlay = $('viewerOverlay');
+let selectedFileNode = null;
+let currentFilePath = null;
+
+let lastFocusedBeforeViewer = null;
+
+async function openFile(path, nodeEl){
+  if(!currentRepo) return;
+  if(selectedFileNode){
+    selectedFileNode.classList.remove('selected');
+    selectedFileNode.setAttribute('aria-selected', 'false');
+  }
+  if(nodeEl){ nodeEl.classList.add('selected'); nodeEl.setAttribute('aria-selected', 'true'); } // nodeEl is null when opened from Search results for a file currently hidden by the tree filter
+  selectedFileNode = nodeEl || null;
+  currentFilePath = path;
+
+  lastFocusedBeforeViewer = document.activeElement;
+  $('viewerPath').textContent = path;
+  $('viewerLang').textContent = '…';
+  $('viewerCode').textContent = 'Loading…';
+  $('viewerTruncated').style.display = 'none';
+  viewerOverlay.classList.add('open');
+  $('closeViewerBtn').focus();
+
+  try{
+    const res = await fetch(API + `${repoApiBase()}/file?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'failed to load file');
+
+    $('viewerLang').textContent = data.language || 'text';
+    const codeEl = $('viewerCode');
+    codeEl.className = data.language ? `hljs language-${data.language}` : 'hljs';
+    codeEl.textContent = data.content;
+    if(window.hljs) hljs.highlightElement(codeEl);
+    $('viewerTruncated').style.display = data.truncated ? 'block' : 'none';
+  }catch(err){
+    $('viewerCode').textContent = 'Error loading file: ' + err.message;
+  }
+}
+
+function closeViewer(){
+  viewerOverlay.classList.remove('open');
+  if(lastFocusedBeforeViewer && document.body.contains(lastFocusedBeforeViewer)){
+    lastFocusedBeforeViewer.focus();
+  }
+}
+$('closeViewerBtn').addEventListener('click', closeViewer);
+viewerOverlay.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeViewer(); });
+
+$('explainFileBtn').addEventListener('click', () => {
+  if(!currentFilePath) return;
+  viewerOverlay.classList.remove('open');
+  questionInput.value = `Explain the file ${currentFilePath}: what is its purpose, key functions, and how does it fit into the rest of the codebase?`;
+  ask();
+});
+
+// ---- Semantic Code Search ----
+
+const searchQueryInput = $('searchQuery');
+const searchBtn = $('searchBtn');
+const searchResultsEl = $('searchResults');
+
+async function runSearch(){
+  const query = searchQueryInput.value.trim();
+  if(!query || !currentRepo) return;
+  searchBtn.disabled = true;
+  searchResultsEl.innerHTML = '<div class="search-placeholder">Searching by meaning…</div>';
+  try{
+    const res = await fetch(API + `${repoApiBase()}/search`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({query})
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'search failed');
+
+    if(!data.results || data.results.length === 0){
+      searchResultsEl.innerHTML = '<div class="search-placeholder">No relevant files found for that query.</div>';
+      return;
+    }
+    searchResultsEl.innerHTML = '';
+    for(const r of data.results){
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      const pathEl = document.createElement('div');
+      pathEl.className = 'result-path';
+      pathEl.textContent = r.path;
+      const reasonEl = document.createElement('div');
+      reasonEl.className = 'result-reason';
+      reasonEl.textContent = r.reason;
+      card.appendChild(pathEl);
+      card.appendChild(reasonEl);
+      card.addEventListener('click', () => {
+        const treeNode = treeEl.querySelector(`.node.file[data-path="${CSS.escape(r.path)}"]`);
+        openFile(r.path, treeNode); // treeNode may be null if filtered out of view; openFile handles selection styling defensively
+      });
+      searchResultsEl.appendChild(card);
+    }
+  }catch(err){
+    searchResultsEl.innerHTML = `<div class="search-placeholder" style="color:var(--warn)">Error: ${escapeHtml(err.message)}</div>`;
+  }finally{
+    searchBtn.disabled = false;
+  }
+}
+
+searchBtn.addEventListener('click', runSearch);
+searchQueryInput.addEventListener('keydown', e => { if(e.key === 'Enter') runSearch(); });
+
+// ---- Tabs ----
+
+const allTabs = Array.from(document.querySelectorAll('.tab'));
+
+function activateTab(tabBtn){
+  allTabs.forEach(b => {
+    const isActive = b === tabBtn;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', String(isActive));
+    b.tabIndex = isActive ? 0 : -1;
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  $('tab-' + tabBtn.dataset.tab).classList.add('active');
+  if(tabBtn.dataset.tab === 'diagram' && currentRepo){
+    loadDiagram(false);
+  }
+}
+
+allTabs.forEach((tabBtn, i) => {
+  tabBtn.addEventListener('click', () => activateTab(tabBtn));
+  // Standard ARIA tabs keyboard pattern: arrow keys move focus + selection between tabs.
+  tabBtn.addEventListener('keydown', (e) => {
+    let target = null;
+    if(e.key === 'ArrowRight') target = allTabs[(i+1) % allTabs.length];
+    else if(e.key === 'ArrowLeft') target = allTabs[(i-1+allTabs.length) % allTabs.length];
+    else if(e.key === 'Home') target = allTabs[0];
+    else if(e.key === 'End') target = allTabs[allTabs.length-1];
+    if(target){ e.preventDefault(); target.focus(); activateTab(target); }
+  });
+});
+
+// ---- Architecture Diagram Generator ----
+
+if(window.mermaid){
+  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
+}
+
+const diagramPane = $('diagramPane');
+
+function renderDiagramControls(loading){
+  return `
+    <div class="diagram-controls">
+      <button id="genDiagramBtn" ${loading ? 'disabled' : ''}>${loading ? 'Generating…' : 'Generate diagram'}</button>
+      <span class="hint">Uses one AI call; cached after the first generation for this repo.</span>
+    </div>`;
+}
+
+async function loadDiagram(forceRefresh){
+  if(!currentRepo) return;
+  diagramPane.innerHTML = renderDiagramControls(true);
+
+  try{
+    // Demo Mode's diagram endpoint has no ?refresh= escape hatch by
+    // design (see handleDemoDiagram) — it's generated once total and
+    // shared by every visitor, so the query param is simply never sent.
+    const refreshQuery = (!currentRepo.isDemo && forceRefresh) ? '?refresh=true' : '';
+    const res = await fetch(API + `${repoApiBase()}/diagram${refreshQuery}`, { method: 'POST' });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'diagram generation failed');
+
+    diagramPane.innerHTML = renderDiagramControls(false) +
+      `<div class="mermaid-container"><pre class="mermaid">${escapeHtml(data.mermaid)}</pre></div>` +
+      `<div class="diagram-explanation">${escapeHtml(data.explanation)}</div>`;
+
+    document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
+
+    if(window.mermaid){
+      mermaid.run({ querySelector: '#diagramPane .mermaid' });
+    }
+  }catch(err){
+    diagramPane.innerHTML = renderDiagramControls(false) +
+      `<div class="diagram-explanation" style="color:var(--warn)">Error: ${escapeHtml(err.message)}</div>`;
+    document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
+  }
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ---- Wire up import/ask + reset per-repo state on new import ----
+
+// ---- Mobile file-tree drawer (the tree is never simply hidden on small
+// screens — it slides in over the content so it's still reachable) ----
+
+const treePane = $('treePane');
+const treeScrim = $('treeScrim');
+const filesToggleBtn = $('filesToggleBtn');
+
+function openTreeDrawer(){
+  treePane.classList.add('open');
+  treeScrim.classList.add('open');
+  filesToggleBtn.setAttribute('aria-expanded', 'true');
+  treeFilterInput.focus();
+}
+function closeTreeDrawer(){
+  treePane.classList.remove('open');
+  treeScrim.classList.remove('open');
+  filesToggleBtn.setAttribute('aria-expanded', 'false');
+  filesToggleBtn.focus();
+}
+filesToggleBtn.addEventListener('click', () => {
+  treePane.classList.contains('open') ? closeTreeDrawer() : openTreeDrawer();
+});
+$('treeCloseBtn').addEventListener('click', closeTreeDrawer);
+treeScrim.addEventListener('click', closeTreeDrawer);
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && treePane.classList.contains('open')) closeTreeDrawer();
+});
+// Selecting a file on mobile should close the drawer so the viewer is visible.
+treeEl.addEventListener('click', (e) => {
+  if(e.target.closest('.node.file') && window.matchMedia('(max-width: 760px)').matches) closeTreeDrawer();
+});
+
+$('importBtn').addEventListener('click', importRepo);
+$('repoUrl').addEventListener('keydown', e => { if(e.key === 'Enter') importRepo(); });
+askBtn.addEventListener('click', ask);
+questionInput.addEventListener('keydown', e => { if(e.key === 'Enter') ask(); });
+</script>
+</body>
+</html>
