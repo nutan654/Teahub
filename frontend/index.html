@@ -191,13 +191,6 @@
   .chat-pane, .diagram-pane{position:relative;flex:1;display:flex;flex-direction:column;min-height:0;}
 
   .diagram-pane{overflow-y:auto;padding:1.25rem;}
-<<<<<<< HEAD
-  .diagram-controls{display:flex;gap:.5rem;align-items:center;margin-bottom:1rem;}
-  .diagram-controls .hint{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);}
-  .diagram-explanation{font-size:.88rem;line-height:1.6;color:var(--text);background:var(--panel);
-    border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:1rem;white-space:pre-wrap;}
-  .mermaid-container{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow-x:auto;}
-=======
   .diagram-controls{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;}
   .diagram-controls .hint{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);}
   .diagram-controls .spacer{flex:1;}
@@ -232,7 +225,6 @@
     animation:diagSpin .8s linear infinite;}
   @keyframes diagShimmer{to{background-position:-200% 0;}}
   @keyframes diagSpin{to{transform:rotate(360deg);}}
->>>>>>> 3edc2f6 (Update TeaHub)
   .diagram-placeholder{margin:auto;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:.85rem;}
 
   .search-pane{flex:1;display:flex;flex-direction:column;min-height:0;}
@@ -1024,45 +1016,6 @@ allTabs.forEach((tabBtn, i) => {
 // ---- Architecture Diagram Generator ----
 
 if(window.mermaid){
-<<<<<<< HEAD
-  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
-}
-
-const diagramPane = $('diagramPane');
-
-function renderDiagramControls(loading){
-  return `
-    <div class="diagram-controls">
-      <button id="genDiagramBtn" ${loading ? 'disabled' : ''}>${loading ? 'Generating…' : 'Generate diagram'}</button>
-      <span class="hint">Uses one AI call; cached after the first generation for this repo.</span>
-    </div>`;
-}
-
-async function loadDiagram(forceRefresh){
-  if(!currentRepo) return;
-  diagramPane.innerHTML = renderDiagramControls(true);
-
-  try{
-    // Demo Mode's diagram endpoint has no ?refresh= escape hatch by
-    // design (see handleDemoDiagram) — it's generated once total and
-    // shared by every visitor, so the query param is simply never sent.
-    const refreshQuery = (!currentRepo.isDemo && forceRefresh) ? '?refresh=true' : '';
-    const res = await fetch(API + `${repoApiBase()}/diagram${refreshQuery}`, { method: 'POST' });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'diagram generation failed');
-
-    diagramPane.innerHTML = renderDiagramControls(false) +
-      `<div class="mermaid-container"><pre class="mermaid">${escapeHtml(data.mermaid)}</pre></div>` +
-      `<div class="diagram-explanation">${escapeHtml(data.explanation)}</div>`;
-
-    document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
-
-    if(window.mermaid){
-      mermaid.run({ querySelector: '#diagramPane .mermaid' });
-    }
-  }catch(err){
-    diagramPane.innerHTML = renderDiagramControls(false) +
-=======
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
@@ -1257,7 +1210,6 @@ async function loadDiagram(forceRefresh){
   }catch(err){
     if(mySeq !== diagramLoadSeq) return;
     diagramPane.innerHTML = renderDiagramControls('idle') +
->>>>>>> 3edc2f6 (Update TeaHub)
       `<div class="diagram-explanation" style="color:var(--warn)">Error: ${escapeHtml(err.message)}</div>`;
     document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
   }
