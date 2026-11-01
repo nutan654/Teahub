@@ -137,7 +137,19 @@ Requires auth + ownership. Hybrid semantic code search.
 Requires auth + ownership. Generates (or returns a cached) architecture
 diagram. Omit `?refresh=true` to get the cached version if one exists.
 
+<<<<<<< HEAD
 **Response** `200`: `{"mermaid": "...", "explanation": "...", "cached": true}`
+=======
+**Response** `200`:
+`{"mermaid": "...", "explanation": "...", "fallback": "...", "source": "ai", "cached": false}`
+
+- `mermaid`: the diagram to render. Sanitized and structurally validated server-side.
+- `fallback`: a deterministic diagram built only from the repo's structure
+  (languages, pages, docker-compose services, SQL tables). The frontend renders
+  it if the browser's Mermaid parser rejects `mermaid`.
+- `source`: `"ai"` when the model's diagram passed validation, `"structural"`
+  when it did not and the structural diagram was substituted. Omitted on cached responses.
+>>>>>>> 3edc2f6 (Update TeaHub)
 
 ## Error format
 

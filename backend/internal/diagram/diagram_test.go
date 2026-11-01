@@ -101,3 +101,109 @@ func TestExtractMermaidSequenceDiagram(t *testing.T) {
 		t.Errorf("unexpected extracted diagram: %q", got)
 	}
 }
+<<<<<<< HEAD
+=======
+
+func TestSanitizeQuotesBareLabelsWithParens(t *testing.T) {
+	in := "flowchart TD\n  A[API (PHP) / REST] -->|reads (SQL)| B[(Database)]\n  B --> C[Cache: redis]"
+	got := SanitizeMermaid(in)
+	for _, want := range []string{`A["API (PHP) / REST"]`, `|"reads (SQL)"|`, `B[("Database")]`, `C["Cache: redis"]`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("sanitized output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestSanitizeDoesNotCorruptTwoEdgeLabelsOnOneLine(t *testing.T) {
+	in := "flowchart TD\n  A -->|\"one\"| B -->|\"two\"| C"
+	if got := SanitizeMermaid(in); got != in {
+		t.Errorf("already-valid line was altered:\n%s", got)
+	}
+}
+
+func TestSanitizeQuotesSubgraphTitlesAndStripsInit(t *testing.T) {
+	in := "%%{init: {'theme':'forest'}}%%\nflowchart TD\n  subgraph Data Layer (SQL)\n    A --> B\n  end"
+	got := SanitizeMermaid(in)
+	if strings.Contains(got, "%%{") {
+		t.Errorf("init directive not stripped:\n%s", got)
+	}
+	if !strings.Contains(got, `subgraph SG1["Data Layer (SQL)"]`) {
+		t.Errorf("subgraph title not quoted:\n%s", got)
+	}
+}
+
+func TestExtractMermaidSalvagesUnfencedDiagram(t *testing.T) {
+	got, err := ExtractMermaid("Sure! Here you go:\nflowchart LR\n  A --> B")
+	if err != nil || !strings.HasPrefix(got, "flowchart LR") {
+		t.Fatalf("got %q, err %v", got, err)
+	}
+}
+
+func TestValidateStructure(t *testing.T) {
+	cases := map[string]bool{
+		"flowchart TD\n  A --> B":                             true,
+		"flowchart TD\n  subgraph S\n    A --> B":             false,
+		"flowchart TD\n  A[\"x]\n  A --> B":                   false,
+		"flowchart TD\n  A":                                   false,
+		"flowchart TD\n  subgraph S[\"s\"]\n  A --> B\n  end": true,
+	}
+	for src, ok := range cases {
+		if err := ValidateStructure(src); (err == nil) != ok {
+			t.Errorf("ValidateStructure(%q) = %v, want ok=%v", src, err, ok)
+		}
+	}
+}
+
+func flatPHPRepo() *store.Repo {
+	return &store.Repo{
+		Tree: &store.FileNode{Children: []*store.FileNode{
+			{Path: "migrations", IsDir: true, Children: []*store.FileNode{
+				{Path: "migrations/000_base_schema.sql"}, {Path: "migrations/001_finance_tables.sql"},
+			}},
+			{Path: "Dockerfile.php"}, {Path: "docker-compose.yml"}, {Path: "admin.html"},
+			{Path: "cart.html"}, {Path: "cart.js"}, {Path: "cart.css"}, {Path: "api.php"},
+			{Path: "add_invoice_api.php"}, {Path: "add_vendor_api.php"}, {Path: "README.md"},
+		}},
+		Files: map[string]string{
+			"migrations/000_base_schema.sql": "CREATE TABLE IF NOT EXISTS invoices (id INT);\nCREATE TABLE vendors (id INT);",
+			"docker-compose.yml":             "services:\n  web:\n    build: .\n    ports:\n      - \"8080:80\"\n  db:\n    image: mysql:8\nvolumes:\n  data:\n",
+			"README.md":                      "# Visonflow\n\nPharmacy billing.",
+		},
+	}
+}
+
+func TestBuildSummaryFlatRepoSeesRootFilesNotJustDirs(t *testing.T) {
+	s := BuildSummary(flatPHPRepo())
+	str := s.String()
+	for _, want := range []string{"PHP (3 files)", "cart", "invoice", "vendor", "invoices", "vendors", "web (build: .", "db (image: mysql:8", "Pharmacy billing"} {
+		if !strings.Contains(str, want) {
+			t.Errorf("summary missing %q:\n%s", want, str)
+		}
+	}
+	if len(s.Services) != 2 {
+		t.Errorf("expected 2 compose services, got %v", s.Services)
+	}
+}
+
+func TestFallbackMermaidIsValidAndLayered(t *testing.T) {
+	m := FallbackMermaid(flatPHPRepo())
+	if err := ValidateStructure(m); err != nil {
+		t.Fatalf("fallback diagram failed validation: %v\n%s", err, m)
+	}
+	for _, want := range []string{"Presentation layer", "Application layer", "Data layer", "Runtime and delivery", "DATA_DB[(", "invoice"} {
+		if !strings.Contains(m, want) {
+			t.Errorf("fallback missing %q:\n%s", want, m)
+		}
+	}
+	if SanitizeMermaid(m) != m {
+		t.Errorf("sanitizer should leave the fallback diagram unchanged")
+	}
+}
+
+func TestFallbackMermaidEmptyRepo(t *testing.T) {
+	m := FallbackMermaid(&store.Repo{Tree: &store.FileNode{}, Files: map[string]string{}})
+	if !strings.HasPrefix(m, "flowchart TD") || !strings.Contains(m, "REPO[") {
+		t.Errorf("unexpected empty-repo fallback:\n%s", m)
+	}
+}
+>>>>>>> 3edc2f6 (Update TeaHub)

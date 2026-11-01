@@ -191,11 +191,48 @@
   .chat-pane, .diagram-pane{position:relative;flex:1;display:flex;flex-direction:column;min-height:0;}
 
   .diagram-pane{overflow-y:auto;padding:1.25rem;}
+<<<<<<< HEAD
   .diagram-controls{display:flex;gap:.5rem;align-items:center;margin-bottom:1rem;}
   .diagram-controls .hint{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);}
   .diagram-explanation{font-size:.88rem;line-height:1.6;color:var(--text);background:var(--panel);
     border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:1rem;white-space:pre-wrap;}
   .mermaid-container{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow-x:auto;}
+=======
+  .diagram-controls{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;}
+  .diagram-controls .hint{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);}
+  .diagram-controls .spacer{flex:1;}
+  .diagram-controls .tool-btn{font-family:var(--mono);font-size:.75rem;padding:.35rem .6rem;border-radius:6px;
+    background:var(--panel-2);color:var(--text);border:1px solid var(--border);cursor:pointer;}
+  .diagram-controls .tool-btn:hover:not(:disabled){border-color:var(--accent-dim);color:#fff;}
+  .diagram-controls .tool-btn:disabled{opacity:.45;cursor:not-allowed;}
+  .diagram-controls .zoom-label{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);min-width:3.2rem;text-align:center;}
+  .diagram-chips{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.75rem;}
+  .chip{font-family:var(--mono);font-size:.68rem;padding:.12rem .5rem;border-radius:999px;border:1px solid var(--border);color:var(--text-dim);}
+  .chip.ok{color:var(--accent);border-color:var(--accent-dim);}
+  .chip.warn{color:var(--warn);border-color:var(--warn);}
+  .diagram-explanation{font-size:.9rem;line-height:1.65;color:var(--text);background:var(--panel);
+    border:1px solid var(--border);border-radius:8px;padding:1rem 1.15rem;margin-top:1rem;white-space:pre-wrap;}
+  .diagram-explanation h3{margin:0 0 .5rem;font-family:var(--mono);font-size:.78rem;font-weight:600;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--text-dim);}
+  .mermaid-container{background:radial-gradient(circle at 1px 1px,#1c2430 1px,transparent 0) 0 0/18px 18px,var(--panel);
+    border:1px solid var(--border);border-radius:8px;padding:1rem;overflow:auto;max-height:70vh;min-height:220px;}
+  .mermaid-container svg{display:block;margin:0 auto;height:auto;max-width:none;}
+  .diagram-legend{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.6rem;font-family:var(--mono);font-size:.7rem;color:var(--text-dim);}
+  .diagram-legend span::before{content:"";display:inline-block;width:.7rem;height:.7rem;border-radius:3px;margin-right:.4rem;
+    vertical-align:-1px;border:1.5px solid var(--c);background:var(--bgc);}
+  .diagram-source{margin-top:1rem;font-family:var(--mono);font-size:.78rem;color:var(--text-dim);}
+  .diagram-source summary{cursor:pointer;}
+  .diagram-source pre{margin:.6rem 0 0;padding:.9rem;background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    overflow:auto;color:var(--text);font-size:.76rem;line-height:1.5;}
+  .diagram-skeleton{border:1px solid var(--border);border-radius:8px;min-height:260px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:.9rem;color:var(--text-dim);font-family:var(--mono);font-size:.8rem;
+    background:linear-gradient(100deg,var(--panel) 30%,var(--panel-2) 50%,var(--panel) 70%) 0 0/200% 100%;
+    animation:diagShimmer 1.6s linear infinite;}
+  .diagram-skeleton .spin{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);
+    animation:diagSpin .8s linear infinite;}
+  @keyframes diagShimmer{to{background-position:-200% 0;}}
+  @keyframes diagSpin{to{transform:rotate(360deg);}}
+>>>>>>> 3edc2f6 (Update TeaHub)
   .diagram-placeholder{margin:auto;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:.85rem;}
 
   .search-pane{flex:1;display:flex;flex-direction:column;min-height:0;}
@@ -987,6 +1024,7 @@ allTabs.forEach((tabBtn, i) => {
 // ---- Architecture Diagram Generator ----
 
 if(window.mermaid){
+<<<<<<< HEAD
   mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
 }
 
@@ -1024,6 +1062,202 @@ async function loadDiagram(forceRefresh){
     }
   }catch(err){
     diagramPane.innerHTML = renderDiagramControls(false) +
+=======
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: 'base',
+    fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+    flowchart: { curve: 'basis', htmlLabels: true, useMaxWidth: false, padding: 14, nodeSpacing: 42, rankSpacing: 54 },
+    themeVariables: {
+      darkMode: true,
+      background: '#11161d',
+      fontSize: '14px',
+      primaryColor: '#1b2740',
+      primaryTextColor: '#e6edf3',
+      primaryBorderColor: '#6ea8fe',
+      secondaryColor: '#12301f',
+      secondaryBorderColor: '#5fb98c',
+      tertiaryColor: '#161c25',
+      tertiaryBorderColor: '#2f3a48',
+      lineColor: '#8b98a8',
+      textColor: '#d7dde5',
+      clusterBkg: '#141a22',
+      clusterBorder: '#2f3a48',
+      titleColor: '#9aa7b6',
+      edgeLabelBackground: '#0d1117'
+    }
+  });
+}
+
+const diagramPane = $('diagramPane');
+let diagramLoadSeq = 0;   // guards against stale responses after switching repos/tabs
+let diagramRenderSeq = 0; // unique DOM ids for mermaid.render
+let diagramView = null;   // { code, naturalWidth, zoom } for the diagram currently on screen
+
+function renderDiagramControls(state, view){
+  // state: 'idle' | 'loading' | 'ready'
+  const demo = currentRepo && currentRepo.isDemo;
+  const loading = state === 'loading';
+  const ready = state === 'ready';
+  const label = loading ? 'Generating…' : (ready ? 'Regenerate' : 'Generate diagram');
+  const regenDisabled = loading || (demo && ready);
+  const hint = demo
+    ? 'Shared demo diagram: generated once and served to every visitor.'
+    : 'Regenerating uses one AI call; the result is cached for this repo.';
+  return `
+    <div class="diagram-controls">
+      <button id="genDiagramBtn" ${regenDisabled ? 'disabled' : ''}>${label}</button>
+      ${ready ? `
+        <button class="tool-btn" id="dgZoomOut" aria-label="Zoom out" title="Zoom out">−</button>
+        <span class="zoom-label" id="dgZoomLabel" aria-live="polite">100%</span>
+        <button class="tool-btn" id="dgZoomIn" aria-label="Zoom in" title="Zoom in">+</button>
+        <button class="tool-btn" id="dgFit" title="Fit to width">Fit</button>
+        <span class="spacer"></span>
+        <button class="tool-btn" id="dgCopy" title="Copy Mermaid source">Copy source</button>
+        <button class="tool-btn" id="dgSvg" title="Download as SVG">Download SVG</button>
+      ` : `<span class="hint">${hint}</span>`}
+    </div>`;
+}
+
+// Parse first (cheap, throws on syntax errors), then render. Mermaid leaves
+// an error "bomb" element in <body> when render fails, so remove it.
+async function renderMermaidSvg(code){
+  if(!window.mermaid) throw new Error('Mermaid library failed to load (check your network / ad-blocker).');
+  const id = 'dg-svg-' + (++diagramRenderSeq);
+  try{
+    await mermaid.parse(code);
+    const { svg } = await mermaid.render(id, code);
+    return svg;
+  }catch(e){
+    document.getElementById('d' + id)?.remove();
+    document.getElementById(id)?.remove();
+    throw e;
+  }
+}
+
+function setDiagramZoom(z){
+  if(!diagramView) return;
+  diagramView.zoom = Math.min(3, Math.max(0.2, z));
+  const svg = document.querySelector('#dgStage svg');
+  if(svg) svg.style.width = Math.round(diagramView.naturalWidth * diagramView.zoom) + 'px';
+  const lbl = document.getElementById('dgZoomLabel');
+  if(lbl) lbl.textContent = Math.round(diagramView.zoom * 100) + '%';
+}
+
+function fitDiagram(){
+  const box = document.getElementById('dgStage');
+  if(!box || !diagramView) return;
+  const avail = box.clientWidth - 32;
+  if(avail <= 0){ setDiagramZoom(1); return; }
+  setDiagramZoom(Math.min(1.25, avail / diagramView.naturalWidth));
+}
+
+function downloadText(filename, text, mime){
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function loadDiagram(forceRefresh){
+  if(!currentRepo) return;
+  const mySeq = ++diagramLoadSeq;
+  diagramView = null;
+  diagramPane.innerHTML = renderDiagramControls('loading') +
+    '<div class="diagram-skeleton" role="status"><div class="spin"></div>' +
+    '<div>Reading repository structure and drawing the architecture…</div></div>';
+
+  try{
+    // Demo Mode's diagram endpoint has no ?refresh= escape hatch by
+    // design (see handleDemoDiagram): it's generated once total and
+    // shared by every visitor, so the query param is simply never sent.
+    const refreshQuery = (!currentRepo.isDemo && forceRefresh) ? '?refresh=true' : '';
+    const res = await fetch(API + `${repoApiBase()}/diagram${refreshQuery}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || 'diagram generation failed');
+    if(mySeq !== diagramLoadSeq) return; // user switched repo/tab meanwhile
+
+    // 1) Try the AI diagram. 2) If the browser's Mermaid parser rejects it,
+    // use the server's structural diagram so the user still gets a picture.
+    let code = data.mermaid, svg = null, usedFallback = false, aiError = null;
+    try{
+      svg = await renderMermaidSvg(code);
+    }catch(e){
+      aiError = e;
+      console.warn('AI diagram failed to render, using structural fallback:', e);
+      if(data.fallback){
+        try{ svg = await renderMermaidSvg(data.fallback); code = data.fallback; usedFallback = true; }
+        catch(e2){ console.warn('Structural fallback failed too:', e2); }
+      }
+    }
+    if(mySeq !== diagramLoadSeq) return;
+
+    if(!svg){
+      diagramPane.innerHTML = renderDiagramControls('idle') +
+        `<div class="diagram-explanation" style="color:var(--warn)">The diagram could not be drawn: ${escapeHtml((aiError && aiError.message) || 'unknown rendering error')}. Press Generate diagram to try again.</div>` +
+        `<details class="diagram-source" open><summary>Mermaid source returned by the server</summary><pre>${escapeHtml(data.mermaid || '')}</pre></details>`;
+      document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
+      return;
+    }
+
+    const structural = usedFallback || data.source === 'structural';
+    const chips = [
+      structural
+        ? '<span class="chip warn">Built from repo structure</span>'
+        : '<span class="chip ok">AI-generated</span>',
+      data.cached ? '<span class="chip">Cached</span>' : '<span class="chip">Fresh</span>'
+    ];
+    if(usedFallback) chips.push('<span class="chip warn">AI diagram had a syntax error, showing structural view</span>');
+
+    const explanation = usedFallback
+      ? 'The AI-generated diagram could not be rendered, so this view was built directly from the repository structure (languages, pages, services and database files). Press Regenerate to try the AI version again.\n\n' + (data.explanation || '')
+      : (data.explanation || '');
+
+    diagramPane.innerHTML = renderDiagramControls('ready') +
+      `<div class="diagram-chips">${chips.join('')}</div>` +
+      `<div class="mermaid-container" id="dgStage" role="img" aria-label="Architecture diagram of ${escapeHtml(currentRepo.url || 'this repository')}">${svg}</div>` +
+      `<div class="diagram-legend">
+         <span style="--c:#5fb98c;--bgc:#12301f">Presentation</span>
+         <span style="--c:#6ea8fe;--bgc:#1b2740">Application</span>
+         <span style="--c:#e0a458;--bgc:#3a2a12">Data</span>
+         <span style="--c:#b48ead;--bgc:#2d1f3d">Infrastructure</span>
+       </div>` +
+      (explanation ? `<div class="diagram-explanation"><h3>How it fits together</h3>${escapeHtml(explanation)}</div>` : '') +
+      `<details class="diagram-source"><summary>Mermaid source</summary><pre>${escapeHtml(code)}</pre></details>`;
+
+    // Mermaid emits width="100%" + max-width; switch to an explicit pixel
+    // width taken from the viewBox so zoom and horizontal scrolling behave.
+    const svgEl = document.querySelector('#dgStage svg');
+    const vb = svgEl && svgEl.viewBox && svgEl.viewBox.baseVal;
+    const natural = (vb && vb.width) || (svgEl && svgEl.getBoundingClientRect().width) || 800;
+    if(svgEl){ svgEl.removeAttribute('height'); svgEl.style.maxWidth = 'none'; }
+    diagramView = { code, naturalWidth: natural, zoom: 1 };
+    fitDiagram();
+
+    document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
+    document.getElementById('dgZoomIn').addEventListener('click', () => setDiagramZoom(diagramView.zoom * 1.2));
+    document.getElementById('dgZoomOut').addEventListener('click', () => setDiagramZoom(diagramView.zoom / 1.2));
+    document.getElementById('dgFit').addEventListener('click', fitDiagram);
+    document.getElementById('dgCopy').addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget;
+      try{ await navigator.clipboard.writeText(code); btn.textContent = 'Copied'; }
+      catch(_){ btn.textContent = 'Copy failed'; }
+      setTimeout(() => { btn.textContent = 'Copy source'; }, 1500);
+    });
+    document.getElementById('dgSvg').addEventListener('click', () => {
+      const el = document.querySelector('#dgStage svg');
+      if(!el) return;
+      const clone = el.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      clone.style.background = '#11161d';
+      downloadText('architecture.svg', clone.outerHTML, 'image/svg+xml');
+    });
+  }catch(err){
+    if(mySeq !== diagramLoadSeq) return;
+    diagramPane.innerHTML = renderDiagramControls('idle') +
+>>>>>>> 3edc2f6 (Update TeaHub)
       `<div class="diagram-explanation" style="color:var(--warn)">Error: ${escapeHtml(err.message)}</div>`;
     document.getElementById('genDiagramBtn').addEventListener('click', () => loadDiagram(true));
   }
