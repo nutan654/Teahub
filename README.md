@@ -1,456 +1,273 @@
 # TeaHub
 
-A developer intelligence platform for understanding unfamiliar GitHub repositories through static analysis, semantic search, AI-assisted code exploration, and automatically generated architecture diagrams.
+TeaHub is a developer tool for understanding unfamiliar GitHub repositories. Import a repository and TeaHub clones it, parses it, runs static analysis, and lets you browse files, search by intent, ask questions in natural language, and generate an architecture diagram. AI answers are built from the repository's real files and cite the files they used.
 
-TeaHub turns a repository into an explorable knowledge system: import a GitHub repository, analyze its structure and source code, browse files, search by intent, ask questions in natural language, and generate an architecture overview with source-grounded answers.
+- **Frontend (Vercel):** https://teahub-six.vercel.app
+- **Backend (Render):** https://teahub-tqmf.onrender.com
 
+> The deployment runs on free tiers. The first request after a period of inactivity can be slow because the instance wakes up, and repositories are re-cloned on demand after a restart (see [Storage model](#storage-model)).
 
+## Features
 
-- ⚙️ **Render:** https://teahub-tqmf.onrender.com
-
-## Core Capabilities
-
-* GitHub OAuth authentication with server-side session revocation
-* Repository import through GitHub URLs or `owner/repository` shorthand
-* Automatic repository cloning, parsing, and indexing
-* Per-language static analysis for Go, Python, and JavaScript
-* Incremental indexing using content hashes to skip unchanged files
-* Semantic code search using keyword pre-filtering and LLM re-ranking
-* AI-assisted repository Q&A powered by Google Gemini
-* Source-grounded answers with file-level citations
-* Automatic Mermaid architecture diagram generation
-* Syntax-highlighted source exploration
-* Per-user repository isolation enforced at the SQL layer
-* Path-traversal-safe file access
-* Request rate limiting for expensive AI and repository operations
-* Dockerized, non-root production deployment
-* Automated CI with tests, race detection, static analysis, and Docker builds
-
-## Problem
-
-Understanding an unfamiliar codebase often requires manually cloning the repository, navigating its directory tree, locating relevant files, and building a mental model of its architecture.
-
-TeaHub compresses that workflow into a single interface.
-
-Instead of asking:
-
-> "Where is authentication implemented?"
-
-a developer can ask the repository directly and receive an answer grounded in the actual source files.
+- GitHub OAuth sign-in with JWT sessions in HttpOnly cookies and server-side session revocation
+- Import a repository by GitHub URL or `owner/repo` shorthand (shallow clone, GitHub only)
+- Static analysis of Go (real AST), Python (via `python3`'s `ast`), and JavaScript/TypeScript (regex heuristics, marked partial)
+- Hybrid semantic search: keyword pre-filter, then Gemini re-ranking, with every returned path validated against real files
+- Repository Q&A using keyword retrieval and Gemini, with source file citations
+- Architecture diagram generation (Mermaid) with caching and a deterministic fallback diagram
+- File explorer with syntax highlighting and a sandboxed file reader
+- Per-user repository isolation enforced in SQL
+- Per-user rate limiting on cost-bearing endpoints
+- Optional unauthenticated Demo Mode backed by one pre-indexed repository
+- Health, readiness, and in-process metrics endpoints
+- Docker image (non-root), Docker Compose stack, GitHub Actions CI
 
 ## Architecture
 
 ```text
-                         ┌──────────────────────────┐
-                         │      Browser / UI         │
-                         │   Static HTML + JS        │
-                         │  Highlight.js + Mermaid   │
-                         └────────────┬─────────────┘
-                                      │
-                              HTTP / Session Cookie
-                                      │
-                                      ▼
-                         ┌──────────────────────────┐
-                         │       Go HTTP API        │
-                         │                          │
-                         │ Routing · Auth · API     │
-                         │ Ownership · Rate Limits  │
-                         └───────┬─────────┬────────┘
-                                 │         │
-                    ┌────────────┘         └─────────────┐
-                    ▼                                    ▼
-          ┌───────────────────┐                ┌───────────────────┐
-          │    PostgreSQL     │                │ Repository Engine │
-          │                   │                │                   │
-          │ Users             │                │ Git Clone         │
-          │ Repositories      │                │ Parser            │
-          │ Sessions          │                │ Static Analysis   │
-          │ Metadata          │                │ Incremental Index │
-          └───────────────────┘                └─────────┬─────────┘
-                                                         │
-                                                         ▼
-                                               ┌───────────────────┐
-                                               │ AI / Search Layer │
-                                               │                   │
-                                               │ Gemini            │
-                                               │ Semantic Search   │
-                                               │ Architecture      │
-                                               └───────────────────┘
+Browser (frontend/index.html, vanilla JS, Highlight.js + Mermaid via CDN)
+        |  fetch()
+        |  On Vercel, /api/* and /auth/* are rewritten (proxied) to the Render backend,
+        |  so the browser sees a single origin and session cookies work without CORS.
+        v
+Go HTTP server (net/http, Go 1.22 ServeMux patterns)
+   middleware: metrics > request id > panic recovery > access log > timeout > CORS
+   per route:  auth > rate limit > handler
+        |                  |                      |
+        v                  v                      v
+   PostgreSQL        Disk (clones)       In-memory runtime cache
+   users             REPO_STORAGE_DIR    file contents, analysis index,
+   repositories                          cached diagram
+   sessions                                      |
+                                                 v
+                                          Gemini API (Q&A, search re-rank, diagram)
 ```
 
-PostgreSQL stores application metadata such as users, repositories, and sessions. Repository working trees remain on disk, while parsed source content and analysis indexes are maintained as runtime caches and rebuilt when necessary.
-
-## Repository Intelligence Pipeline
+### Import pipeline
 
 ```text
-GitHub Repository
-       │
-       ▼
-   Git Clone
-       │
-       ▼
-Filesystem Parser
-       │
-       ├───────────────┐
-       ▼               ▼
-  File Tree       Source Contents
-                       │
-                       ▼
-               Static Analysis
-                       │
-                       ▼
-              Incremental Index
-                       │
-             ┌─────────┴─────────┐
-             ▼                   ▼
-        Code Search          AI Retrieval
-             │                   │
-             └─────────┬─────────┘
-                       ▼
-                 Gemini API
-                       │
-              ┌────────┼─────────┐
-              ▼        ▼         ▼
-             Q&A    Search    Architecture
+POST /api/import
+  -> validate URL (github.com only)
+  -> INSERT repository row (status: pending)
+  -> git clone --depth 1            (status: cloning)
+  -> parser.Walk: tree + file text  (status: indexing)
+  -> index.Build: concurrent static analysis (worker pool)
+  -> persist metadata to Postgres   (status: ready)
+  -> store files + index in the in-memory cache
 ```
 
-## Incremental Indexing
+Status values: `pending`, `cloning`, `indexing`, `ready`, `failed`.
 
-TeaHub does not blindly re-analyze every file on every update.
+### Storage model
 
-Each indexed file is associated with its content hash. During an incremental update, files whose content has not changed are skipped entirely.
+| State | Location | Reason |
+|---|---|---|
+| Users, repository metadata (owner, URL, status, file tree), sessions | PostgreSQL | Small, structured, must survive restarts |
+| Cloned working trees | Disk under `REPO_STORAGE_DIR` | Source blobs do not belong in a relational database |
+| Parsed file contents, analysis index, cached diagram | In-process cache | Rebuildable from the clone |
 
-This reduces unnecessary analysis work and makes repeated repository updates significantly cheaper.
+If a repository's metadata exists in Postgres but its cache entry or clone is missing (restart, new instance, ephemeral disk), the server re-clones from the stored URL, re-parses, and rebuilds the index before serving the request. On startup it also tries to warm the cache for repositories that are already `ready`.
 
-A benchmark on a 1,000-file synthetic repository reported approximately:
+### Incremental indexing
 
-```text
-Full Build       ~55 ms/op
-No-change Update  ~2.7 ms/op
-Improvement       ~20x
-```
+`index.Build` analyzes every file once, using a bounded concurrent worker pool with context cancellation. `index.Update` re-analyzes only files whose content hash changed. A benchmark on a 1,000-file synthetic repository measured roughly 55 ms for a full build versus 2.7 ms for a no-change update (about 20x), measured on a single-core machine, so the gain comes from skipping unchanged files rather than from parallelism.
 
-The indexing engine also uses a concurrent worker pool with cancellation support and is covered by race testing.
+**Current status:** `/api/import` calls `Build` only. `Update` is implemented, tested (including a call-count test proving unchanged files are skipped), and benchmarked, but nothing in the running application triggers it yet.
 
-## AI-Assisted Code Understanding
+## API
 
-TeaHub uses Google Gemini for three major capabilities:
+All endpoints return JSON. Authenticated endpoints use the `teahub_session` cookie. Full contract: [`API.md`](API.md) and [`openapi.yaml`](openapi.yaml).
 
-### Repository Q&A
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/health` | no | Liveness (never touches the database), includes build version |
+| GET | `/api/ready` | no | Readiness (pings the database, 503 if unreachable) |
+| GET | `/metrics` | no | In-process request, error, and latency snapshot |
+| GET | `/auth/github/login` | no | Start GitHub OAuth |
+| GET | `/auth/github/callback` | no | Finish OAuth, set session cookie |
+| POST | `/auth/logout` | yes | Revoke session, clear cookie |
+| GET | `/api/me` | yes | Current user |
+| POST | `/api/import` | yes, rate limited | Clone, parse, and index a repository |
+| GET | `/api/repos?limit=&cursor=` | yes | List your repositories (keyset pagination, default 20, max 100) |
+| DELETE | `/api/repos/{id}` | yes | Delete a repository and its clone |
+| POST | `/api/ask` | yes, rate limited | Ask a question about a repository |
+| GET | `/api/repos/{id}/file?path=` | yes | Read one file (sandboxed, 512 KB cap) |
+| POST | `/api/repos/{id}/search` | yes, rate limited | Semantic search |
+| POST | `/api/repos/{id}/diagram?refresh=true` | yes | Architecture diagram (cached unless `refresh=true`) |
 
-Users can ask questions about the imported codebase in natural language.
+Demo Mode routes (only registered when `DEMO_REPO_URL` is set): `GET /api/demo`, `GET /api/demo/file`, `POST /api/demo/ask`, `POST /api/demo/search`, `POST /api/demo/diagram`. The `ask` and `search` routes are rate limited by client IP.
 
-Answers are grounded in repository files rather than relying solely on model knowledge.
-
-### Semantic Search
-
-Search combines:
-
-```text
-Keyword pre-filter
-        +
-LLM re-ranking
-        +
-Path validation
-```
-
-This avoids requiring a separate vector database while still supporting intent-based code discovery.
-
-Returned paths are validated against the actual repository file set before being shown to the user.
-
-### Architecture Generation
-
-TeaHub analyzes the repository structure and generates:
-
-* Mermaid architecture diagrams
-* Structural summaries
-* Written explanations of major components and relationships
+Common status codes: `400` invalid input, `401` not signed in, `404` unknown repository **or not owned by you**, `409` already imported or still importing, `429` rate limited, `502` upstream failure (git or Gemini), `503` not ready or timed out.
 
 ## Security
 
-Security is treated as part of the application architecture rather than an afterthought.
+- **Auth:** GitHub OAuth (authorization-code flow) with a random `state` checked against both a short-lived cookie and server memory. Sessions are HS256 JWTs (`sub`, `jti`, `iat`, `exp`) signed with a key of at least 32 bytes in production, verified with a constant-time comparison. The cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` in production.
+- **Revocation:** each JWT's `jti` is stored in the `sessions` table. The auth middleware checks revocation and loads the user from the database on every authenticated request, so logout takes effect immediately at the cost of two queries per request.
+- **Tenant isolation:** repository queries filter on `id` and `owner_id` in SQL. Other users' repositories return `404`, not `403`, so existence is not revealed.
+- **SQL:** parameterized queries only.
+- **Filesystem:** file reads are confined to the repository's clone directory. Absolute paths, `..` traversal, and symlink escapes are rejected.
+- **Cloning:** only `https://github.com/owner/repo` URLs are accepted, and `git` is invoked with an argument list (no shell) and a 90-second timeout.
+- **Request limits:** body size cap, question and query length caps, handler timeout (default 60s), and `ReadHeaderTimeout`.
+- **CORS:** default deny. The `Origin` is echoed only if it exactly equals `FRONTEND_ORIGIN`.
+- **AI output:** returned search paths are validated against the candidate set, and diagram output must parse as a Mermaid diagram. Mermaid renders with `securityLevel: 'strict'`.
+- **Config:** in production the server refuses to start without `DATABASE_URL` and a sufficiently long `JWT_SIGNING_KEY`.
+- **Container:** multi-stage build, non-root runtime user.
 
-### Authentication
+## Tech stack
 
-* GitHub OAuth
-* HS256 JWT authentication
-* HttpOnly cookies
-* SameSite=Lax
-* Secure cookies in production
-* Server-side session revocation
-* OAuth CSRF protection using a state token
+| Layer | Technology |
+|---|---|
+| Backend | Go 1.22, `net/http` |
+| Database | PostgreSQL 16 via `database/sql` + `lib/pq` (the only third-party Go dependency) |
+| Auth | GitHub OAuth, hand-rolled HS256 JWT (stdlib `crypto/hmac`) |
+| AI | Google Gemini (OpenAI-compatible chat completions endpoint) with retries and model fallback |
+| Frontend | Single HTML file, vanilla JS, Highlight.js, Mermaid.js |
+| Containers | Docker, Docker Compose |
+| CI | GitHub Actions |
+| Hosting | Render (backend + Postgres), Vercel (frontend). Cloud Run + Cloud SQL guide included |
 
-### Multi-Tenant Isolation
-
-Repository ownership is enforced directly in SQL.
-
-Repository queries are scoped by both repository ID and owner ID:
-
-```text
-WHERE id = ? AND owner_id = ?
-```
-
-This prevents accidental cross-user access even if a handler-level authorization check is missed.
-
-Unauthorized repositories return `404`, preventing information leakage about resources belonging to another user.
-
-### File-System Security
-
-File reads are sandboxed against the repository's actual clone root.
-
-The implementation rejects:
-
-* `../` traversal
-* Absolute paths
-* Symlink escapes
-
-### API Security
-
-* Parameterized SQL queries
-* Default-deny CORS
-* Per-user rate limiting
-* Stricter IP-based limits for anonymous Demo Mode
-* No hardcoded secrets
-* Production configuration validation
-* Non-root Docker runtime
-
-## Demo Mode
-
-TeaHub includes an optional unauthenticated Demo Mode for evaluating the product without configuring GitHub OAuth or PostgreSQL.
-
-Set:
-
-```bash
-DEMO_REPO_URL=golang/example
-```
-
-and TeaHub clones and indexes the repository once at startup.
-
-The demo exposes read-only repository exploration, search, Q&A, and architecture generation while applying tighter rate limits to protect AI usage.
-
-The architecture diagram is generated once and cached for subsequent visitors.
-
-Demo Mode is completely opt-in and disappears when `DEMO_REPO_URL` is not configured.
-
-## Technology Stack
-
-| Layer                | Technology                             |
-| -------------------- | --------------------------------------- |
-| Backend              | Go 1.22                                |
-| HTTP                 | Go `net/http` / `ServeMux`             |
-| Database             | PostgreSQL 16                          |
-| Database Access      | `database/sql` + `lib/pq`              |
-| Authentication       | GitHub OAuth + HS256 JWT               |
-| AI                   | Google Gemini API                      |
-| Frontend             | HTML, CSS, JavaScript                  |
-| Code Highlighting    | Highlight.js                           |
-| Diagrams             | Mermaid.js                             |
-| Containerization     | Docker                                 |
-| Local Infrastructure | Docker Compose                         |
-| CI                   | GitHub Actions                         |
-| Production           | Render / Cloud Run                     |
-| Database Hosting     | PostgreSQL / Cloud SQL                 |
-| Secrets              | Environment variables / Secret Manager |
-
-The backend deliberately keeps dependencies minimal: `lib/pq` is the only third-party Go dependency; routing, authentication, JWT handling, and OAuth are implemented using the Go standard library.
-
-## Testing & Quality
-
-The project includes multiple levels of validation:
-
-```bash
-make test
-make test-integration
-make race
-make bench
-make vet
-make fmt
-```
-
-CI automatically runs:
-
-```text
-gofmt
-go vet
-go build
-go test
-go test -race
-Docker build
-```
-
-Integration tests use a real PostgreSQL service in CI, while the standard unit test suite can run without a database.
-
-## Local Development
+## Getting started
 
 ### Requirements
 
-* Go 1.22+
-* Docker
-* PostgreSQL, or Docker Compose
-* Google Gemini API key
-* GitHub OAuth application for authenticated development
+- Go 1.22+
+- Docker and Docker Compose (recommended)
+- A Gemini API key (for Q&A, search, and diagrams)
+- A GitHub OAuth app (for sign-in)
+- `git` on the machine running the server (already included in the Docker image)
+- `python3` on the server `PATH` if you want full Python analysis (see [Known limitations](#known-limitations))
 
-### Setup
+### Run with Docker Compose
 
 ```bash
 git clone https://github.com/nutan654/Teahub.git
 cd Teahub
-
-go mod tidy
-cp .env.example .env
-```
-
-Configure:
-
-```text
-DATABASE_URL
-GEMINI_API_KEY
-JWT_SIGNING_KEY
-GITHUB_CLIENT_ID
-GITHUB_CLIENT_SECRET
-GITHUB_OAUTH_REDIRECT_URL
-```
-
-Start the complete stack:
-
-```bash
+cp .env.example .env     # fill in values
 docker compose up --build
 ```
 
-The application runs on:
+The app is served at http://localhost:8080 (Postgres on port 5432).
 
-```text
-http://localhost:8080
+### Run without a database (development only)
+
+```bash
+export TEAHUB_IN_MEMORY_STORE=true
+export JWT_SIGNING_KEY="$(openssl rand -base64 48)"
+export GEMINI_API_KEY=...
+go run ./backend/cmd/server
 ```
 
-For development without PostgreSQL, TeaHub also supports an in-memory store through:
+Metadata is lost on restart in this mode. Never use it in production.
 
-```text
-TEAHUB_IN_MEMORY_STORE=true
+### Configuration
+
+Required for the full product: `DATABASE_URL`, `JWT_SIGNING_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_OAUTH_REDIRECT_URL`, `GEMINI_API_KEY`.
+
+Without `GEMINI_API_KEY`, import still works but ask, search, and diagram fail. Without GitHub credentials, sign-in is disabled. Without `JWT_SIGNING_KEY` outside production, a random key is generated per process and sessions do not survive a restart.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | Listen port |
+| `TEAHUB_ENV` | `development` | `production` enables strict config validation and secure cookies |
+| `DATABASE_URL` | none | Postgres DSN |
+| `TEAHUB_IN_MEMORY_STORE` | `false` | Dev-only in-memory metadata store |
+| `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` / `DB_CONN_MAX_LIFETIME` | `10` / `5` / `30m` | Connection pool |
+| `SESSION_TTL` | `168h` | Session lifetime |
+| `SESSION_COOKIE_NAME` | `teahub_session` | Cookie name |
+| `SECURE_COOKIES` | true in production | `Secure` cookie flag |
+| `GEMINI_MODEL` | see `.env.example` | Primary model (fallbacks are tried automatically) |
+| `REPO_STORAGE_DIR` | `./data/repos` | Where clones live |
+| `FRONTEND_ORIGIN` | empty | Only needed if the frontend is on a different origin than the API |
+| `REQUEST_TIMEOUT` | `60s` | Per-request handler timeout |
+| `SHUTDOWN_GRACE_PERIOD` | `15s` | Graceful shutdown window |
+| `MAX_REQUEST_BODY_BYTES` | `1048576` | Request body cap |
+| `MAX_QUESTION_LENGTH` / `MAX_SEARCH_QUERY_LENGTH` | `4000` / `500` | Input caps |
+| `IMPORT_RATE_LIMIT_PER_MIN` / `_BURST` | `5` / `3` | Import limiter |
+| `ASK_RATE_LIMIT_PER_MIN` / `_BURST` | `20` / `10` | Ask and search limiter |
+| `DEMO_REPO_URL` | empty | Enables Demo Mode (for example `golang/example`) |
+| `DEMO_ASK_RATE_LIMIT_PER_MIN` / `_BURST` | `6` / `3` | Per-IP demo limiter |
+
+`backend/internal/config/config.go` is the authoritative list.
+
+### Demo Mode
+
+Set `DEMO_REPO_URL` and the server clones and indexes that repository in the background after startup. Until it finishes, `/api/demo/*` returns `503`. Demo endpoints are read-only and need no sign-in. Leave the variable unset and no demo routes exist.
+
+## Development
+
+```bash
+make build              # compile
+make test               # unit tests
+make race               # tests with the race detector
+make bench              # indexing benchmarks
+make vet                # go vet
+make fmt                # list files that are not gofmt'd
+make test-integration   # DB tests against a throwaway Postgres (needs Docker)
 ```
 
-This mode is intended only for development and testing, not production.
+Unit tests use an in-memory fake that satisfies the same `DataStore` interface as the Postgres store, so they run without a database. `dbstore` integration tests run against real Postgres when `TEAHUB_TEST_DATABASE_URL` is set.
 
-## Project Structure
+### CI
 
-```text
-Teahub/
-├── backend/
-│   ├── cmd/server/
-│   └── internal/
-│       ├── api/              HTTP handlers and routing
-│       ├── auth/             GitHub OAuth and JWT
-│       ├── config/           Environment configuration
-│       ├── httpmw/           Middleware and rate limiting
-│       ├── dbstore/          PostgreSQL persistence
-│       ├── memstore/         In-memory store
-│       ├── gitclone/         Repository cloning and validation
-│       ├── parser/            Filesystem parsing
-│       ├── fsread/            Secure file access
-│       ├── analysis/          Go/Python/JavaScript analysis
-│       ├── index/             Incremental indexing
-│       ├── ai/                Gemini integration
-│       ├── diagram/           Architecture generation
-│       ├── semsearch/         Semantic search
-│       └── store/             Runtime cache
-│
-├── frontend/
-│   └── index.html             Single-page frontend
-│
-├── deploy/
-│   ├── render.md
-│   └── cloudrun.md
-│
-├── .github/workflows/
-│   └── ci.yml
-│
-├── Dockerfile
-├── docker-compose.yml
-├── render.yaml
-├── API.md
-├── openapi.yaml
-├── ARCHITECTURE.md
-├── ROADMAP.md
-├── Makefile
-└── go.mod
-```
+GitHub Actions runs on every push to `main` and every pull request: `gofmt`, `go vet`, `staticcheck`, build, `go test`, `go test -race`, `dbstore` integration tests against a Postgres 16 service container, and a Docker image build (not pushed).
 
-## API
+### Database migrations
 
-Core API operations include:
-
-```text
-POST /api/import
-POST /api/ask
-POST /api/repos/{id}/search
-POST /api/repos/{id}/diagram
-```
-
-The complete API contract is documented in:
-
-```text
-API.md
-openapi.yaml
-```
+SQL files in `backend/internal/dbstore/migrations` are embedded in the binary, applied in filename order at startup, each in its own transaction, and recorded in `schema_migrations`. Migrations are forward-only.
 
 ## Deployment
 
-TeaHub is containerized and deployment-ready for:
+- **Render:** `render.yaml` is a Blueprint that deploys the Dockerfile with a managed Postgres. Secrets (`GITHUB_*`, `GEMINI_API_KEY`) are entered in the dashboard. See [`deploy/render.md`](deploy/render.md).
+- **Vercel:** serves `frontend/` and rewrites `/api/*` and `/auth/*` to the backend (configure the destination in `vercel.json`).
+- **Cloud Run + Cloud SQL:** step-by-step guide in [`deploy/cloudrun.md`](deploy/cloudrun.md) (written but not executed).
+
+The platform health check uses `/api/health`. `/api/ready` additionally checks the database.
+
+## Project structure
 
 ```text
-Render
-Cloud Run
-Cloud SQL
+backend/
+  cmd/server/            entrypoint, startup, graceful shutdown
+  internal/
+    api/                 routes, handlers, demo mode, cache warm-up
+    auth/                GitHub OAuth, JWT
+    config/              environment configuration and validation
+    httpmw/              auth, logging, recovery, timeout, rate limiting, client IP
+    dbstore/             Postgres access and migrations
+    memstore/            in-memory store for tests and dev
+    store/               runtime cache (files, index, diagram)
+    gitclone/            URL validation and shallow clone
+    parser/              filesystem walk, tree and text extraction
+    fsread/              sandboxed file reads
+    analysis/            Go, Python, JavaScript static analysis
+    index/               incremental index and worker pool
+    ai/                  Gemini client, keyword retrieval, context building
+    semsearch/           hybrid semantic search
+    diagram/             Mermaid diagram generation and fallback
+    metrics/             in-process metrics
+frontend/index.html      single-page UI
+deploy/                  Render and Cloud Run guides
+Dockerfile, docker-compose.yml, render.yaml, vercel.json, Makefile
+API.md, openapi.yaml, ARCHITECTURE.md, ROADMAP.md
 ```
 
-The repository includes:
+## Known limitations
 
-* `Dockerfile`
-* `docker-compose.yml`
-* `render.yaml`
-* Render deployment documentation
-* Cloud Run deployment documentation
-* PostgreSQL configuration
-* CI/CD workflow
+- **Import is synchronous.** Clone, parse, and index happen inside one request. The clone timeout is 90 seconds but the default request timeout is 60 seconds, so very large repositories can time out. Asynchronous jobs are planned.
+- **A failed import leaves its row in `failed` state,** and importing the same URL again returns `409` until the repository is deleted.
+- **Retrieval is keyword-based.** Q&A and the search candidate pool start from keyword overlap. Semantic search re-ranks by meaning, but a relevant file sharing no words with the query can still be missed in large repositories. Embeddings are the planned replacement.
+- **JavaScript/TypeScript analysis is heuristic** and always marked partial.
+- **Python analysis needs `python3` on `PATH`.** The provided Docker image does not install it, so Python files are marked partial there unless you add it to the image.
+- **Single-instance assumptions.** The rate limiters, OAuth state store, and runtime cache are in process memory. Running several instances multiplies the effective rate limits and can break a login whose callback lands on a different instance. Redis or Postgres would be needed for a shared implementation.
+- **Demo rate limiting uses `X-Forwarded-For`,** which clients can spoof. It protects the AI budget, not a security boundary.
+- **`/metrics` is unauthenticated** and resets on restart.
+- **Ephemeral disk on free hosting.** Clones are lost on restart and re-created on first access.
+- **Only public GitHub repositories** can be imported.
 
-For production deployments, repository storage must account for ephemeral container filesystems. PostgreSQL stores persistent metadata while cloned repositories and runtime indexes are treated as rebuildable state.
+## License
 
-## Engineering Decisions
-
-### Why Go?
-
-The backend uses Go's standard library extensively to keep the service small, explicit, and easy to reason about.
-
-### Why PostgreSQL?
-
-PostgreSQL provides durable storage for users, repository metadata, and sessions while allowing ownership constraints to be enforced directly through SQL.
-
-### Why Hybrid Search?
-
-A keyword pre-filter followed by LLM re-ranking provides semantic retrieval without introducing an embeddings database or vector infrastructure.
-
-### Why Synchronous Repository Import?
-
-The initial implementation keeps clone → parse → analyze → index within a single request. This makes the system easier to test and reason about. Asynchronous job processing is planned as a future scaling improvement.
-
-## Future Work
-
-Planned improvements include:
-
-* Asynchronous repository imports
-* Background indexing jobs
-* Improved incremental analysis
-* Expanded language support
-* More advanced repository dependency analysis
-* Production-scale caching
-* Persistent external repository storage
-* Additional AI-powered code intelligence features
+See [`LICENSE`](LICENSE).
 
 ## Author
 
-**Nutan Bisandre**
-
-Electronics & Communication Engineering
-IIITDM Jabalpur
-
-[GitHub](https://github.com/nutan654)
+Nutan Bisandre, Electronics & Communication Engineering, IIITDM Jabalpur. [GitHub](https://github.com/nutan654)
