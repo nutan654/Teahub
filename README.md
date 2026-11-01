@@ -2,7 +2,7 @@
 
 TeaHub is a developer tool for understanding unfamiliar GitHub repositories. Import a repository and TeaHub clones it, parses it, runs static analysis, and lets you browse files, search by intent, ask questions in natural language, and generate an architecture diagram. AI answers are built from the repository's real files and cite the files they used.
 
-- **Frontend (Vercel):** https://teahub-six.vercel.app
+
 - **Backend (Render):** https://teahub-tqmf.onrender.com
 
 > The deployment runs on free tiers. The first request after a period of inactivity can be slow because the instance wakes up, and repositories are re-cloned on demand after a restart (see [Storage model](#storage-model)).
