@@ -5,10 +5,7 @@ A developer intelligence platform for understanding unfamiliar GitHub repositori
 TeaHub turns a repository into an explorable knowledge system: import a GitHub repository, analyze its structure and source code, browse files, search by intent, ask questions in natural language, and generate an architecture overview with source-grounded answers.
 
 
-<<<<<<< HEAD
-=======
-- 🌐 **Vercel:** https://teahub-six.vercel.app
->>>>>>> 3edc2f6 (Update TeaHub)
+
 - ⚙️ **Render:** https://teahub-tqmf.onrender.com
 
 ## Core Capabilities
