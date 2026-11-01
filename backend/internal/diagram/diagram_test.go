@@ -101,8 +101,6 @@ func TestExtractMermaidSequenceDiagram(t *testing.T) {
 		t.Errorf("unexpected extracted diagram: %q", got)
 	}
 }
-<<<<<<< HEAD
-=======
 
 func TestSanitizeQuotesBareLabelsWithParens(t *testing.T) {
 	in := "flowchart TD\n  A[API (PHP) / REST] -->|reads (SQL)| B[(Database)]\n  B --> C[Cache: redis]"
@@ -206,4 +204,3 @@ func TestFallbackMermaidEmptyRepo(t *testing.T) {
 		t.Errorf("unexpected empty-repo fallback:\n%s", m)
 	}
 }
->>>>>>> 3edc2f6 (Update TeaHub)
