@@ -449,10 +449,7 @@ func (s *Server) handleDiagram(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"mermaid":     repo.DiagramMermaid,
 			"explanation": repo.DiagramExplanation,
-<<<<<<< HEAD
-=======
 			"fallback":    diagram.FallbackMermaid(repo),
->>>>>>> 3edc2f6 (Update TeaHub)
 			"cached":      true,
 		})
 		return
@@ -468,11 +465,8 @@ func (s *Server) handleDiagram(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"mermaid":     result.Mermaid,
 		"explanation": result.Explanation,
-<<<<<<< HEAD
-=======
 		"fallback":    diagram.FallbackMermaid(repo),
 		"source":      result.Source,
->>>>>>> 3edc2f6 (Update TeaHub)
 		"cached":      false,
 	})
 }
